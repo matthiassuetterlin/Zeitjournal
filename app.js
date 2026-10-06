@@ -40,7 +40,7 @@ const ENC_KEY = 'zeitjournal.v1.enc';  // { salt, iv, data } als Base64
 let cryptoKey = null;                  // gesetzt, sobald entsperrt
 let cryptoSalt = null;
 const te = new TextEncoder(), td = new TextDecoder();
-const toB64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const toB64 = buf => { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function deriveKey(pw, salt) {
   const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
@@ -80,7 +80,7 @@ async function unlockWith(pw) {
   const salt = fromB64(rec.salt);
   const key = await deriveKey(pw, salt);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.data)); // wirft bei falschem Passwort
-  Object.assign(state, { catColors: {} }, JSON.parse(td.decode(plain)));
+  Object.assign(state, { catColors: {}, sync: undefined }, JSON.parse(td.decode(plain)));
   if (!Array.isArray(state.projects)) state.projects = [];
   cryptoKey = key; cryptoSalt = salt;
 }
@@ -789,7 +789,7 @@ $('exportCsv').onclick = () => {
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   download('zeitjournal.csv', '﻿' + csv, 'text/csv');
 };
-$('exportJson').onclick = () => download(`zeitjournal-${toDateStr(new Date())}.json`, JSON.stringify(state, null, 2), 'application/json');
+$('exportJson').onclick = () => download(`zeitjournal-${toDateStr(new Date())}.json`, JSON.stringify({ ...state, sync: undefined }, null, 2), 'application/json');
 $('importJson').onchange = async ev => {
   const f = ev.target.files[0];
   if (!f) return;
@@ -1138,7 +1138,7 @@ async function lockApp() {
   await flushSave();
   cryptoKey = null;
   cryptoSalt = null;
-  Object.assign(state, { entries: [], projects: [], running: null, catColors: {} });
+  Object.assign(state, { entries: [], projects: [], running: null, catColors: {}, sync: undefined });
   closeColorMenu();
   history.length = 0;
   future.length = 0;

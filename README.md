@@ -47,6 +47,15 @@ Das Zeitjournal gibt es auch als Desktop-Programm für Windows. Es liegt durchsi
 
 Selbst bauen: im Ordner `desktop` `npm install` und `npm run dist`. Zum Ausprobieren ohne Installer: `npm start`.
 
+## Abgleich zwischen Geräten
+
+Die Windows-App und die Webseite können ihre Zeiten über einen kleinen Online-Speicher (Supabase, kostenloser Plan) abgleichen. Der Knopf ☁ neben „Sperren“ richtet das ein: auf dem ersten Gerät „Neu einrichten“, auf jedem weiteren „Schlüssel eingeben“ und den Sync-Schlüssel vom ersten Gerät einfügen.
+
+- Hochgeladen wird nur ein mit dem Sync-Schlüssel verschlüsselter Block. Der Schlüssel bleibt auf den Geräten, mit dem Code verschlüsselt.
+- Ändern zwei Geräte gleichzeitig etwas, werden beide Änderungen zusammengeführt. Gelöschte Blöcke bleiben gelöscht.
+- Das Claude-Seitenfenster gleicht nicht mit ab, weil es keine fremden Server erreichen kann.
+- Einrichtung des Speichers: `docs/sync-setup.sql` im Supabase-SQL-Editor ausführen und in `sync.js` die Project URL und den anon key eintragen.
+
 ## Code-Sperre
 
 Beim Öffnen fragt das Zeitjournal nach einem 4-stelligen Code, eingegeben über ein Ziffernfeld wie beim Telefon (Maus, Finger oder Zifferntasten). Die Zeiten werden mit dem Code verschlüsselt (AES-GCM, Schlüssel per PBKDF2) im Browser gespeichert und nie an einen Server geschickt. Nach drei falschen Codes muss man 30 Sekunden warten, danach jeweils doppelt so lange.

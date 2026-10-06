@@ -568,3 +568,18 @@ html.panel.narrow .board-edge { display: none; }
 .colormenu .own { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); }
 .colormenu .own input { width: 28px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
 .colormenu .reset { font-size: 12px; padding: 4px 8px; align-self: flex-start; }
+
+/* ---------- Abgleich ---------- */
+.sync-btn { min-width: 44px; }
+.sync-btn.off { color: var(--muted); }
+.sync-btn.err { color: var(--danger); }
+.sync-dialog { display: flex; flex-direction: column; gap: 12px; user-select: text; }
+.sync-dialog h2 { margin: 0; font-size: 16px; }
+.sync-dialog p { margin: 0; }
+.sync-dialog > div { display: flex; flex-direction: column; gap: 12px; }
+.sync-dialog > div[hidden], .sync-dialog [hidden] { display: none !important; }
+.sync-dialog label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+.sync-dialog input { font: 14px ui-monospace, SFMono-Regular, Consolas, monospace; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--track); color: var(--text); }
+.sync-note { font-size: 12px; color: var(--muted); }
+.sync-note:empty { display: none; }
+#confirmDialog { z-index: 160; }   /* Rückfragen liegen über anderen Dialogen */
