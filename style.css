@@ -362,8 +362,6 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .projmenu .item input { padding: 2px 6px; }
 .projmenu .newrow { padding: 6px 2px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 .projmenu .empty { padding: 6px 8px; color: var(--muted); font-size: 13px; }
-.sumrow.subrow { font-size: 12px; color: var(--muted); padding: 1px 0; }
-.sumrow.subrow > span:first-child { padding-left: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Rückfrage und Hinweis */
 .dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; z-index: 150; padding: 16px; }
@@ -583,3 +581,4 @@ html.panel.narrow .board-edge { display: none; }
 .sync-note { font-size: 12px; color: var(--muted); }
 .sync-note:empty { display: none; }
 #confirmDialog { z-index: 160; }   /* Rückfragen liegen über anderen Dialogen */
+.sumrow.zero { color: var(--muted); }

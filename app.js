@@ -459,31 +459,29 @@ function renderMonth() {
 $('prevMonth').onclick = () => { monthView = shiftMonth(monthView, -1); renderMonth(); };
 $('nextMonth').onclick = () => { monthView = shiftMonth(monthView, 1); renderMonth(); };
 
+// Summen je Zeile: Kategorien und einzelne Projekte, in der Reihenfolge ihres ersten Blocks in der Zeitleiste.
+// Kategorien ohne Zeit stehen mit 0:00 am Ende.
 function sums(dates) {
-  const s = Object.fromEntries(CATEGORIES.map(c => [c.id, 0]));
-  const proj = {}; // Minuten je Projekt (Schlüssel '' = ohne Projekt)
-  for (const e of state.entries) {
-    if (!dates.includes(e.date)) continue;
-    s[e.cat] = (s[e.cat] || 0) + (e.end - e.start);
-    if (e.cat === 'projekte') { const k = projById(e.project) ? e.project : ''; proj[k] = (proj[k] || 0) + (e.end - e.start); }
+  const rows = new Map();
+  const list = state.entries.filter(e => dates.includes(e.date))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  for (const e of list) {
+    const pr = e.cat === 'projekte' ? projById(e.project) : null;
+    const key = pr ? 'p:' + pr.id : e.cat;
+    if (!rows.has(key)) rows.set(key, { name: pr ? pr.name : catById(e.cat).name, color: pr ? pr.color : catById(e.cat).color, v: 0 });
+    rows.get(key).v += e.end - e.start;
   }
-  return { s, proj };
+  const used = new Set(list.map(e => e.cat));
+  for (const c of CATEGORIES) if (!used.has(c.id)) rows.set(c.id, { name: c.name, color: c.color, v: 0 });
+  return [...rows.values()];
 }
 const esc = t => t.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
-function renderSums(el, { s, proj }) {
-  const total = Object.values(s).reduce((a, b) => a + b, 0);
-  const row = (cls, name, v, color) => `
-    <div class="sumrow ${cls}"><span>${esc(name)}</span>
-      <div class="sumbar"><div style="width:${total ? (v / total) * 100 : 0}%;background:${color}"></div></div>
-      <span class="v">${fmtDur(v)}</span></div>`;
-  el.innerHTML = CATEGORIES.map(c => {
-    let h = row('', c.name, s[c.id], c.color);
-    if (c.id === 'projekte' && state.projects.length) {
-      for (const pr of state.projects) if (proj[pr.id]) h += row('subrow', pr.name, proj[pr.id], pr.color);
-      if (proj['']) h += row('subrow', 'ohne Projekt', proj[''], c.color);
-    }
-    return h;
-  }).join('') +
+function renderSums(el, rows) {
+  const total = rows.reduce((a, r) => a + r.v, 0);
+  el.innerHTML = rows.map(r => `
+    <div class="sumrow${r.v ? '' : ' zero'}"><span>${esc(r.name)}</span>
+      <div class="sumbar"><div style="width:${total ? (r.v / total) * 100 : 0}%;background:${r.color}"></div></div>
+      <span class="v">${fmtDur(r.v)}</span></div>`).join('') +
     `<div class="sumrow sumtotal"><span>Gesamt</span><span></span><span class="v">${fmtDur(total)}</span></div>`;
 }
 function renderSummary() {
