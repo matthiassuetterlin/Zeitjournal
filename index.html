@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zeitjournal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Zeitjournal</h1>
+    <nav class="daynav">
+      <button id="prevDay" title="Vorheriger Tag (←)">‹</button>
+      <button id="today" title="Heute (T)">Heute</button>
+      <button id="nextDay" title="Nächster Tag (→)">›</button>
+      <span id="dateLabel" class="date-label"></span>
+    </nav>
+    <div class="clock">
+      <span id="runningInfo" class="running-info"></span>
+      <button id="startStop" class="startstop" title="Start/Stopp (Leertaste)">▶ Start</button>
+    </div>
+  </header>
+
+  <section class="palette" id="palette" aria-label="Kategorien"></section>
+
+  <main>
+    <section class="day">
+      <div class="scale" id="scale"></div>
+      <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
+      <p class="hint">Auf der leeren Leiste ziehen = neuer Block · Block ziehen = verschieben · Ränder ziehen = länger/kürzer · Doppelklick = umbenennen · Entf = löschen</p>
+    </section>
+
+    <section class="week">
+      <h2>Woche <span id="weekLabel"></span></h2>
+      <div id="weekRows"></div>
+    </section>
+
+    <section class="summary">
+      <h2>Summen</h2>
+      <div class="summary-grid">
+        <div><h3>Heute</h3><div id="sumDay"></div></div>
+        <div><h3>Diese Woche</h3><div id="sumWeek"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <label>Raster
+      <select id="snap">
+        <option value="5">5 min</option>
+        <option value="15" selected>15 min</option>
+        <option value="30">30 min</option>
+      </select>
+    </label>
+    <button id="copyYesterday" title="Blöcke vom letzten erfassten Tag übernehmen">Vortag übernehmen</button>
+    <button id="exportCsv">CSV exportieren</button>
+    <button id="exportJson">Sicherung speichern</button>
+    <label class="filebtn">Sicherung laden<input type="file" id="importJson" accept="application/json"></label>
+  </footer>
+
+  <div id="editor" class="editor" hidden>
+    <input id="editorInput" type="text" placeholder="Bezeichnung (optional)">
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
