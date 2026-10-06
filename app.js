@@ -329,12 +329,15 @@ function renderTrack() {
   track.innerHTML = '';
   const scale = $('scale');
   scale.innerHTML = '';
+  // Bei wenig Platz nur jede zweite (bzw. dritte) Stunde beschriften
+  const pxPerHour = track.clientWidth / (span / 60);
+  const labelStep = pxPerHour < 26 ? 180 : pxPerHour < 42 ? 120 : 60;
   for (let m = lo; m <= hi; m += 30) {
     const g = document.createElement('div');
     g.className = 'gridline' + (m % 60 ? ' half' : '');
     g.style.left = pct(m) + '%';
     track.appendChild(g);
-    if (m % 60 === 0) {
+    if (m % labelStep === 0) {
       const s = document.createElement('span');
       s.textContent = `${m / 60}:00`;
       s.style.left = pct(m) + '%';

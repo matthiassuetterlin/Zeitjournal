@@ -4,9 +4,13 @@
 // Zwischenräume ziehen verteilt den Platz zwischen Nachbarmodulen, Ränder und Ecken ziehen ändern die ganze App.
 // Ein Modul schließt man mit dem × oben rechts; ausgeblendete Module stehen als „+ Name“ in der Kopfleiste.
 // Im Browser tut diese Datei nichts: nur die Desktop-Hülle stellt window.zeitjournalDesktop bereit.
+// Im Claude-Seitenfenster (window.zeitjournalPanel) gibt es dieselben Module, aber über die ganze Breite
+// und auf normalem Hintergrund; ist es schmal, stehen alle Module untereinander.
 (() => {
-  const host = window.zeitjournalDesktop;
+  const PANEL = !window.zeitjournalDesktop && !!window.zeitjournalPanel;
+  const host = window.zeitjournalDesktop || (PANEL && { setInteractive() {}, reportTiles() {}, onCommand() {} });
   if (!host) return;
+  const PAD = 12, NARROW = 640;
   const BOARD_KEY = 'zeitjournal.boardB';
   const GAP = 12, MIN_H = 70, MIN_W = 150;
   const DEFS = {
@@ -28,6 +32,7 @@
   ];
 
   document.documentElement.classList.add('desktop');
+  if (PANEL) document.documentElement.classList.add('panel');
 
   // ---------- Gerüst ----------
   const board = document.createElement('div');
@@ -83,17 +88,29 @@
   }
 
   // ---------- Anordnen ----------
-  const visibleRows = () => ROWS.map(r => ({ ...r, mods: r.mods.filter(id => !L.hidden[id]) })).filter(r => r.mods.length);
+  const boardW = () => PANEL ? Math.max(2 * MIN_W + GAP, document.documentElement.clientWidth - 2 * PAD) : L.w;
+  // Schmal (nur im Seitenfenster): jedes Modul bekommt eine eigene Zeile
+  const visibleRows = () => {
+    const rows = ROWS.map(r => ({ ...r, mods: r.mods.filter(id => !L.hidden[id]) })).filter(r => r.mods.length);
+    if (!narrow()) return rows;
+    return rows.flatMap(r => r.mods.length < 2 ? [r] : r.mods.map(m => ({ id: 'n_' + m, mods: [m], h: r.h })));
+  };
+  const narrow = () => PANEL && boardW() < NARROW;
+  const rowH = r => L.rowH[r.id] ?? r.h;
   let geo = [];   // berechnete Zeilen für das Ziehen an den Zwischenräumen
   function layout() {
     const rows = visibleRows();
-    const W = L.w;
+    const W = boardW();
     mods.textContent = '';
+    // Schmal: Module einfach untereinander, jedes so hoch wie sein Inhalt
+    const flow = narrow();
+    document.documentElement.classList.toggle('narrow', flow);
     for (const id of Object.keys(DEFS)) if (L.hidden[id]) stash.append(tiles[id]);
     let y = 0;
     geo = [];
     rows.forEach((r, i) => {
-      const h = Math.round(L.rowH[r.id]);
+      const h = Math.round(rowH(r));
+      if (flow) { put(r.mods[0], 0, 0, W, 0); tiles[r.mods[0]].style.cssText = ''; return; }
       if (i) {
         const g = gutter('row', i);
         Object.assign(g.style, { left: '0px', top: (y - GAP) + 'px', width: W + 'px', height: GAP + 'px' });
@@ -112,7 +129,7 @@
     });
     const H = Math.max(0, y - GAP);
     mods.style.width = W + 'px';
-    mods.style.height = H + 'px';
+    mods.style.height = flow ? '' : H + 'px';
     board.style.width = W + 'px';
     // Ausgeblendete Module als „+ Name“ in der Kopfleiste
     restore.textContent = '';
@@ -124,9 +141,12 @@
       b.onclick = () => setHidden(id, false);
       restore.append(b);
     }
-    const p = L.pos || { x: innerWidth - W - 24, y: 16 };
-    // Wird die App höher als der Bildschirm, rückt sie so weit wie möglich nach oben
-    place(p.x, Math.min(p.y, innerHeight - board.offsetHeight - 8));
+    if (PANEL) { board.style.left = board.style.top = ''; }
+    else {
+      const p = L.pos || { x: innerWidth - W - 24, y: 16 };
+      // Wird die App höher als der Bildschirm, rückt sie so weit wie möglich nach oben
+      place(p.x, Math.min(p.y, innerHeight - board.offsetHeight - 8));
+    }
     window.dispatchEvent(new Event('resize'));   // Zeitleiste an die neue Breite anpassen
     store();
   }
@@ -170,12 +190,12 @@
   function colDrag(rowId, ev) {
     return { kind: 'col', row: rowId, s0: L.split[rowId] ?? 0.5, x0: ev.clientX };
   }
-  board.querySelector('.board-bar').addEventListener('pointerdown', ev =>
+  if (!PANEL) board.querySelector('.board-bar').addEventListener('pointerdown', ev =>
     begin(ev, { kind: 'move', dx: ev.clientX - board.offsetLeft, dy: ev.clientY - board.offsetTop }));
   // Ränder und Ecken: ganze App breiter/schmaler und höher/niedriger (alle Zeilen anteilig)
   board.querySelectorAll('.board-edge').forEach(e => e.addEventListener('pointerdown', ev =>
     begin(ev, { kind: 'edge', e: e.dataset.e, x0: ev.clientX, y0: ev.clientY, w0: L.w, left0: board.offsetLeft,
-      rows0: Object.fromEntries(visibleRows().map(r => [r.id, L.rowH[r.id]])) })));
+      rows0: Object.fromEntries(visibleRows().map(r => [r.id, rowH(r)])) })));
 
   window.addEventListener('pointermove', ev => {
     if (!drag) return;
@@ -225,6 +245,7 @@
   window.addEventListener('mousemove', ev => updateInteractive(ev.clientX, ev.clientY));
 
   // ---------- Sperren: nur ein kleines Etikett oben rechts, ein Klick öffnet das Ziffernfeld ----------
+  // (im Seitenfenster bleibt das Ziffernfeld wie auf der Webseite stehen)
   const lock = $('lock');
   const badge = document.createElement('button');
   badge.id = 'lockBadge';
@@ -239,6 +260,7 @@
   collapse.title = 'Ziffernfeld schließen';
   document.querySelector('.lock-card').append(collapse);
   const setCollapsed = on => {
+    if (PANEL) on = false;
     document.documentElement.classList.toggle('lock-collapsed', on);
     interactive = null;   // Maus-Durchlass beim nächsten Bewegen neu bestimmen
   };
@@ -268,7 +290,8 @@
   });
   window.addEventListener('resize', () => {
     // Bildschirm kleiner geworden: App in den sichtbaren Bereich holen
-    if (!drag && L.pos) place(board.offsetLeft, board.offsetTop);
+    if (PANEL) { if (!drag && laidOut && board.offsetWidth !== boardW()) layout(); }
+    else if (!drag && L.pos) place(board.offsetLeft, board.offsetTop);
   });
   layout();
 

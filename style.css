@@ -529,6 +529,19 @@ html.desktop .lock-collapse { display: block; position: absolute; top: 8px; righ
 html.desktop .lock-card:has(#lockCancel:not([hidden])) .lock-collapse { display: none; }
 html.desktop .infotip { position: fixed; width: 360px; right: auto; }
 
+/* Claude-Seitenfenster: dieselben Module, aber auf normalem Hintergrund und über die ganze Breite */
+html.desktop.panel, html.desktop.panel body { background: var(--bg); overflow: auto; height: auto; min-height: 100%; }
+html.panel #board { position: relative; margin: 12px; }
+html.panel .board-bar { cursor: default; }
+html.panel .board-edge:not(.b) { display: none; }
+html.panel .lock { background: var(--bg); pointer-events: auto; }
+html.panel .dialog-backdrop { background: rgba(0,0,0,.35); }
+html.panel .lock-collapse { display: none !important; }
+html.panel .tile { background: var(--panel); box-shadow: none; }
+html.panel.narrow .tile { position: relative; margin-bottom: 12px; }
+html.panel.narrow .tile-body { flex: none; overflow: visible; }
+html.panel.narrow .board-edge { display: none; }
+
 /* ---------- Farbwahl ---------- */
 .cat .dots { color: var(--muted); font-weight: 700; padding: 0 2px; margin-left: -2px; opacity: 0; border-radius: 4px; }
 .cat:hover .dots, .cat:focus-visible .dots { opacity: 1; }
