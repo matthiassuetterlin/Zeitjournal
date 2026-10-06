@@ -23,6 +23,7 @@
       <span id="runningInfo" class="running-info"></span>
       <button id="startStop" class="startstop" title="Start/Stopp (Leertaste)">▶ Start</button>
       <button id="themeToggle" class="theme-toggle" title="Hell/Dunkel umschalten"></button>
+      <button id="lockNow" title="Zeitjournal sperren">🔒 Sperren</button>
     </div>
   </header>
 
@@ -100,7 +101,29 @@
     <button id="exportCsv">CSV exportieren</button>
     <button id="exportJson">Sicherung speichern</button>
     <label class="filebtn">Sicherung laden<input type="file" id="importJson" accept="application/json"></label>
+    <button id="changePw">Code ändern</button>
   </footer>
+
+  <div id="lock" class="lock">
+    <div class="lock-card">
+      <h1>Zeitjournal</h1>
+      <p id="lockText"></p>
+      <div class="pin-dots" id="pinDots" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <p id="lockError" class="lock-error" role="alert"></p>
+      <div class="pinpad" id="pinpad" role="group" aria-label="Zifferntastatur">
+        <button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button>
+        <button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button>
+        <button type="button" data-d="7">7</button><button type="button" data-d="8">8</button><button type="button" data-d="9">9</button>
+        <button type="button" id="lockCancel" class="pin-text" hidden>Abbrechen</button><button type="button" data-d="0" class="pin-zero">0</button><button type="button" id="pinBack" class="pin-text" aria-label="Letzte Ziffer löschen">⌫</button>
+      </div>
+      <form id="legacyForm" class="legacy" hidden>
+        <label for="legacyPw">Bisheriges Passwort</label>
+        <input type="password" id="legacyPw" autocomplete="current-password">
+        <button type="submit" class="primary">Entsperren</button>
+      </form>
+      <button type="button" id="lockForgot" class="linklike">Code vergessen?</button>
+    </div>
+  </div>
 
   <div id="editor" class="editor" hidden>
     <input id="editorInput" type="text" placeholder="Bezeichnung (optional)">
@@ -118,5 +141,7 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="app.js"></script>
+  <script src="sync.js"></script>
+  <script src="desktop.js"></script>
 </body>
 </html>

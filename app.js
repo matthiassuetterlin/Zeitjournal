@@ -9,6 +9,7 @@ const CATEGORIES = [
   { id: 'krankheit', name: 'Krankheit', color: '#dc2626' },
 ];
 const catById = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
+const DEFAULT_COLORS = Object.fromEntries(CATEGORIES.map(c => [c.id, c.color]));
 // Blautöne für einzelne Projekte, damit sie zur Kategorie „Projekte“ passen
 const PROJECT_COLORS = ['#0ea5e9', '#1e40af', '#0891b2', '#60a5fa', '#0369a1', '#1d4ed8', '#155e75', '#38bdf8'];
 
@@ -23,6 +24,7 @@ const state = {
   cat: CATEGORIES[0].id,
   project: null,    // gewähltes Projekt für neue Blöcke
   snap: 15,
+  catColors: {},   // selbst gewählte Farben der Kategorien
 };
 const projById = id => state.projects.find(p => p.id === id) || null;
 // Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
@@ -33,15 +35,61 @@ let selectedId = null;
 const history = [];   // Zustände vor einer Änderung
 const future = [];    // für Wiederholen zurückgelegte Zustände
 
-function load() {
+// ---------- Speichern: mit dem Code verschlüsselt (AES-GCM, Schlüssel per PBKDF2) ----------
+const ENC_KEY = 'zeitjournal.v1.enc';  // { salt, iv, data } als Base64
+let cryptoKey = null;                  // gesetzt, sobald entsperrt
+let cryptoSalt = null;
+const te = new TextEncoder(), td = new TextDecoder();
+const toB64 = buf => { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pw, salt) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+function readEncrypted() {
+  try { return JSON.parse(localStorage.getItem(ENC_KEY)); } catch (e) { return null; }
+}
+// Alte, unverschlüsselte Daten (vor dem Passwortschutz)
+function loadPlain() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (saved && Array.isArray(saved.entries)) Object.assign(state, saved);
   } catch (e) { /* leerer Start */ }
   if (!Array.isArray(state.projects)) state.projects = [];
 }
+async function persist() {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, te.encode(JSON.stringify(state)));
+  localStorage.setItem(ENC_KEY, JSON.stringify({ v: 1, kind: 'pin', salt: toB64(cryptoSalt), iv: toB64(iv), data: toB64(data) }));
+}
+let saving = null, saveAgain = false;
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignorieren */ }
+  if (!cryptoKey) return;
+  if (saving) { saveAgain = true; return; }
+  saving = persist().catch(() => toast('Speichern hat nicht geklappt.')).finally(() => {
+    saving = null;
+    if (saveAgain) { saveAgain = false; save(); }
+  });
+}
+async function flushSave() {
+  while (saving) await saving;
+}
+async function unlockWith(pw) {
+  const rec = readEncrypted();
+  const salt = fromB64(rec.salt);
+  const key = await deriveKey(pw, salt);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.data)); // wirft bei falschem Passwort
+  Object.assign(state, { catColors: {}, sync: undefined }, JSON.parse(td.decode(plain)));
+  if (!Array.isArray(state.projects)) state.projects = [];
+  cryptoKey = key; cryptoSalt = salt;
+}
+async function setPassword(pw) {
+  cryptoSalt = crypto.getRandomValues(new Uint8Array(16));
+  cryptoKey = await deriveKey(pw, cryptoSalt);
+  await flushSave();
+  await persist();
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignorieren */ }
 }
 const snapState = () => JSON.stringify({ entries: state.entries, projects: state.projects });
 function snapshot() {
@@ -128,6 +176,8 @@ const $ = id => document.getElementById(id);
 const track = $('track');
 
 function render() {
+  // Selbst gewählte Farben übernehmen
+  CATEGORIES.forEach(c => { c.color = state.catColors?.[c.id] || DEFAULT_COLORS[c.id]; });
   renderHistoryButtons();
   // Die Monatsansicht folgt dem gewählten Tag, bis man selbst blättert
   if (viewDate !== lastViewDate) { monthView = viewDate.slice(0, 7); lastViewDate = viewDate; }
@@ -164,10 +214,14 @@ function renderPalette() {
     b.className = 'cat' + (active ? ' active' : '');
     b.style.borderColor = active ? c.color : '';
     const proj = c.id === 'projekte' ? projById(state.project) : null;
-    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span>${c.name}<span class="sub"></span><kbd>${i + 1}</kbd>`;
+    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span>${c.name}<span class="sub"></span><kbd>${i + 1}</kbd><span class="dots" title="Farbe ändern">⋯</span>`;
     if (proj) b.querySelector('.sub').textContent = '· ' + proj.name;
     b.title = 'Kategorie wählen. Ist ein Block markiert, wird er umgefärbt. Läuft die Uhr, wird auf diese Kategorie gewechselt.';
-    b.onclick = () => chooseCategory(c.id, c.id === 'projekte' ? state.project : undefined);
+    b.onclick = ev => {
+      if (ev.target.closest('.dots')) { const r = ev.target.getBoundingClientRect(); openColorMenu(r.left, r.bottom + 4, { type: 'cat', id: c.id }); return; }
+      chooseCategory(c.id, c.id === 'projekte' ? state.project : undefined);
+    };
+    b.oncontextmenu = ev => { ev.preventDefault(); openColorMenu(ev.clientX, ev.clientY, { type: 'cat', id: c.id }); };
     if (c.id !== 'projekte') { p.appendChild(b); return; }
     // „Projekte“ bekommt ein Aufklappmenü für einzelne Projekte
     const group = document.createElement('div');
@@ -219,10 +273,11 @@ function renderProjectMenu() {
       name.className = 'name';
       name.textContent = pr.name;
       it.appendChild(name);
-      it.insertAdjacentHTML('beforeend', '<button class="act" data-a="ren" title="Umbenennen">✎</button><button class="act" data-a="del" title="Löschen">✕</button>');
+      it.insertAdjacentHTML('beforeend', '<button class="act" data-a="col" title="Farbe ändern">●</button><button class="act" data-a="ren" title="Umbenennen">✎</button><button class="act" data-a="del" title="Löschen">✕</button>');
     }
     it.onclick = ev => {
       const a = ev.target.dataset.a;
+      if (a === 'col') { const r = ev.target.getBoundingClientRect(); openColorMenu(r.left, r.bottom + 4, { type: 'proj', id: pr.id }); return; }
       if (a === 'ren') { renamingProject = pr.id; renderPalette(); return; }
       if (a === 'del') { deleteProject(pr.id); return; }
       if (renamingProject === pr.id) return;
@@ -274,12 +329,15 @@ function renderTrack() {
   track.innerHTML = '';
   const scale = $('scale');
   scale.innerHTML = '';
+  // Bei wenig Platz nur jede zweite (bzw. dritte) Stunde beschriften
+  const pxPerHour = track.clientWidth / (span / 60);
+  const labelStep = pxPerHour < 26 ? 180 : pxPerHour < 42 ? 120 : 60;
   for (let m = lo; m <= hi; m += 30) {
     const g = document.createElement('div');
     g.className = 'gridline' + (m % 60 ? ' half' : '');
     g.style.left = pct(m) + '%';
     track.appendChild(g);
-    if (m % 60 === 0) {
+    if (m % labelStep === 0) {
       const s = document.createElement('span');
       s.textContent = `${m / 60}:00`;
       s.style.left = pct(m) + '%';
@@ -484,6 +542,7 @@ function stopTimer() {
   render();
 }
 function tick() {
+  if (!cryptoKey) return;
   const e = state.entries.find(x => x.id === state.running);
   if (e) {
     const today = toDateStr(new Date());
@@ -663,6 +722,7 @@ $('editorInput').addEventListener('blur', () => closeEditor(true));
 
 // ---------- Tastatur ----------
 document.addEventListener('keydown', ev => {
+  if (!cryptoKey || !$('lock').hidden) return;
   if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
@@ -729,7 +789,7 @@ $('exportCsv').onclick = () => {
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   download('zeitjournal.csv', '﻿' + csv, 'text/csv');
 };
-$('exportJson').onclick = () => download(`zeitjournal-${toDateStr(new Date())}.json`, JSON.stringify(state, null, 2), 'application/json');
+$('exportJson').onclick = () => download(`zeitjournal-${toDateStr(new Date())}.json`, JSON.stringify({ ...state, sync: undefined }, null, 2), 'application/json');
 $('importJson').onchange = async ev => {
   const f = ev.target.files[0];
   if (!f) return;
@@ -738,7 +798,7 @@ $('importJson').onchange = async ev => {
     if (!Array.isArray(data.entries)) throw new Error();
     if (!await askConfirm(`${data.entries.length} Einträge laden? Die aktuellen Daten werden ersetzt.`, 'Laden')) return;
     snapshot();
-    Object.assign(state, { projects: [] }, data);
+    Object.assign(state, { projects: [], catColors: {} }, data);
     save();
     render();
   } catch (e) {
@@ -825,6 +885,77 @@ window.addEventListener('resize', () => renderTrack());
 makeResizer($('monthResize'), 'monthW', 'x', 20);
 applyLayout();
 
+// ---------- Farben ändern (Rechtsklick auf Block oder Kategorie, ⋯ an der Kategorie) ----------
+const SWATCHES = ['#2563eb', '#0ea5e9', '#4f46e5', '#7c3aed', '#c026d3', '#db2777', '#dc2626', '#ea580c',
+  '#d97706', '#ca8a04', '#65a30d', '#16a34a', '#0d9488', '#0f766e', '#475569', '#78716c'];
+const colorMenu = document.createElement('div');
+colorMenu.className = 'colormenu';
+colorMenu.hidden = true;
+document.body.appendChild(colorMenu);
+function openColorMenu(x, y, target) {
+  const proj = target.type === 'proj' ? projById(target.id) : null;
+  if (target.type === 'proj' && !proj) return;
+  const cat = catById(target.id);
+  const current = proj ? proj.color : cat.color;
+  colorMenu.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = 'Farbe für ' + (proj ? proj.name : cat.name);
+  const grid = document.createElement('div');
+  grid.className = 'swatches';
+  for (const col of SWATCHES) {
+    const sw = document.createElement('button');
+    sw.style.background = col;
+    sw.title = col;
+    if (col.toLowerCase() === current.toLowerCase()) sw.classList.add('current');
+    sw.onclick = () => setColor(target, col);
+    grid.appendChild(sw);
+  }
+  const own = document.createElement('label');
+  own.className = 'own';
+  own.innerHTML = '<input type="color"> Eigene Farbe …';
+  const inp = own.querySelector('input');
+  inp.value = current;
+  inp.oninput = () => setColor(target, inp.value, true);
+  inp.onchange = () => closeColorMenu();
+  colorMenu.append(title, grid, own);
+  if (!proj && state.catColors[target.id]) {
+    const reset = document.createElement('button');
+    reset.className = 'reset';
+    reset.textContent = 'Standardfarbe';
+    reset.onclick = () => setColor(target, null);
+    colorMenu.appendChild(reset);
+  }
+  colorMenu.hidden = false;
+  const w = colorMenu.offsetWidth, h = colorMenu.offsetHeight;
+  colorMenu.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px';
+  colorMenu.style.top = (y + h > innerHeight - 8 ? Math.max(8, y - h) : y) + 'px';
+}
+function closeColorMenu() { colorMenu.hidden = true; }
+function setColor(target, col, keepOpen) {
+  if (target.type === 'proj') {
+    const pr = projById(target.id);
+    if (!pr || pr.color === col) return;
+    if (!keepOpen) snapshot();
+    pr.color = col;
+  } else {
+    if (col) state.catColors[target.id] = col; else delete state.catColors[target.id];
+  }
+  save();
+  render();
+  if (!keepOpen) closeColorMenu();
+}
+document.addEventListener('pointerdown', ev => { if (!colorMenu.hidden && !colorMenu.contains(ev.target)) closeColorMenu(); }, true);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !colorMenu.hidden) { ev.stopPropagation(); closeColorMenu(); } }, true);
+// Rechtsklick auf einen Block: Farbe seines Projekts bzw. seiner Kategorie, auf freier Leiste: gewählte Kategorie
+track.addEventListener('contextmenu', ev => {
+  ev.preventDefault();
+  const blockEl = ev.target.closest('.block');
+  const e = blockEl && state.entries.find(x => x.id === blockEl.dataset.id);
+  const cat = e ? e.cat : state.cat, project = e ? e.project : state.project;
+  openColorMenu(ev.clientX, ev.clientY, cat === 'projekte' && projById(project) ? { type: 'proj', id: project } : { type: 'cat', id: cat });
+});
+
 // ---------- Rückfragen & Hinweise (statt confirm/alert, die eingebettet nicht funktionieren) ----------
 function askConfirm(text, okLabel = 'OK') {
   return new Promise(resolve => {
@@ -866,9 +997,165 @@ $('themeToggle').onclick = () => {
 };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderThemeToggle);
 
+// ---------- Anmeldung mit 4-stelligem Code ----------
+const PIN_LEN = 4;
+const WAIT_KEY = 'zeitjournal.pinwait';  // { fails, until } – Wartezeit nach falschen Codes
+let lockMode = 'unlock'; // 'create' | 'confirm' | 'unlock' | 'change' | 'legacy'
+let pin = '', firstPin = '', checking = false, waitTimer = null;
+const LOCK_TEXT = {
+  create: 'Wähle einen 4-stelligen Code. Deine Zeiten werden damit verschlüsselt in diesem Browser gespeichert.',
+  change: 'Neuen 4-stelligen Code wählen.',
+  confirm: 'Code zur Sicherheit wiederholen.',
+  unlock: 'Code eingeben',
+  legacy: 'Bitte einmal das bisherige Passwort eingeben, danach wählst du einen Code.',
+};
+function readWait() {
+  try { return JSON.parse(localStorage.getItem(WAIT_KEY)) || { fails: 0, until: 0 }; } catch (e) { return { fails: 0, until: 0 }; }
+}
+function writeWait(w) { try { localStorage.setItem(WAIT_KEY, JSON.stringify(w)); } catch (e) { /* ignorieren */ } }
+function renderPin() {
+  $('pinDots').querySelectorAll('span').forEach((d, i) => d.classList.toggle('on', i < pin.length));
+}
+// Nach 3 falschen Codes 30 Sekunden warten, danach jeweils doppelt so lange
+function applyWait() {
+  clearTimeout(waitTimer);
+  const left = lockMode === 'unlock' ? Math.ceil((readWait().until - Date.now()) / 1000) : 0;
+  const blocked = left > 0;
+  $('pinpad').querySelectorAll('button[data-d], #pinBack').forEach(b => { b.disabled = blocked || checking; });
+  if (blocked) {
+    $('lockError').textContent = `Zu viele falsche Versuche. Bitte ${left} s warten.`;
+    waitTimer = setTimeout(applyWait, 1000);
+  } else if ($('lockError').textContent.startsWith('Zu viele')) {
+    $('lockError').textContent = '';
+  }
+  return blocked;
+}
+function showLock(mode) {
+  lockMode = mode;
+  pin = '';
+  $('lockText').textContent = LOCK_TEXT[mode];
+  $('lockCancel').hidden = mode !== 'change' && !(mode === 'confirm' && cryptoKey);
+  $('lockForgot').hidden = mode !== 'unlock' && mode !== 'legacy';
+  $('legacyForm').hidden = mode !== 'legacy';
+  $('pinDots').hidden = $('pinpad').hidden = mode === 'legacy';
+  $('lockError').textContent = '';
+  $('lock').hidden = false;
+  renderPin();
+  applyWait();
+  if (mode === 'legacy') $('legacyPw').focus();
+  else if (document.activeElement && !$('lock').contains(document.activeElement)) document.activeElement.blur();
+}
+function pinError(text) {
+  $('lockError').textContent = text;
+  const dots = $('pinDots');
+  dots.classList.remove('shake'); void dots.offsetWidth; dots.classList.add('shake');
+  pin = '';
+  renderPin();
+}
+let started = false;
+function startApp() {
+  $('lock').hidden = true;
+  $('snap').value = String(state.snap);
+  render();
+  if (!started) { started = true; setInterval(tick, 1000); }
+}
+async function pinComplete() {
+  const code = pin;
+  if (lockMode === 'create' || lockMode === 'change') {
+    firstPin = code;
+    showLock('confirm');
+    return;
+  }
+  if (lockMode === 'confirm') {
+    if (code !== firstPin) { const back = cryptoKey ? 'change' : 'create'; showLock(back); pinError('Die Codes waren nicht gleich. Bitte noch einmal.'); return; }
+    checking = true; applyWait();
+    try {
+      const wasChange = !!cryptoKey;
+      if (!wasChange) loadPlain();
+      await setPassword(code);
+      writeWait({ fails: 0, until: 0 });
+      if (wasChange) toast('Code geändert.');
+      startApp();
+    } catch (e) {
+      pinError('Das hat nicht geklappt. Bitte noch einmal.');
+    } finally { checking = false; applyWait(); }
+    return;
+  }
+  // entsperren
+  checking = true; applyWait();
+  let ok = false;
+  try {
+    await unlockWith(code);
+    ok = true;
+    writeWait({ fails: 0, until: 0 });
+  } catch (e) {
+    const w = readWait();
+    w.fails++;
+    if (w.fails >= 3) w.until = Date.now() + 30000 * 2 ** (w.fails - 3);
+    writeWait(w);
+    pinError('Falscher Code.');
+  } finally { checking = false; applyWait(); }
+  if (ok) startApp();   // außerhalb von try: ein Fehler beim Zeichnen ist kein falscher Code
+}
+function pressDigit(d) {
+  if ($('lock').hidden || lockMode === 'legacy' || checking || applyWait() || pin.length >= PIN_LEN) return;
+  pin += d;
+  if ($('lockError').textContent && pin.length === 1) $('lockError').textContent = '';
+  renderPin();
+  if (pin.length === PIN_LEN) setTimeout(pinComplete, 120); // letzten Punkt kurz zeigen
+}
+$('pinpad').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-d]');
+  if (b) pressDigit(b.dataset.d);
+});
+$('pinBack').onclick = () => { if (!checking) { pin = pin.slice(0, -1); renderPin(); } };
+document.addEventListener('keydown', ev => {
+  if ($('lock').hidden || lockMode === 'legacy') return;
+  if (/^[0-9]$/.test(ev.key)) { ev.preventDefault(); pressDigit(ev.key); }
+  else if (ev.key === 'Backspace') { ev.preventDefault(); $('pinBack').click(); }
+  else if (ev.key === 'Escape' && !$('lockCancel').hidden) $('lockCancel').click();
+});
+// Ältere Version mit Textpasswort: einmal entsperren, dann Code festlegen
+$('legacyForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  try {
+    await unlockWith($('legacyPw').value);
+    $('legacyPw').value = '';
+    showLock('change');
+    $('lockText').textContent = 'Entsperrt. Wähle jetzt einen 4-stelligen Code.';
+  } catch (e) {
+    $('lockError').textContent = 'Das Passwort stimmt nicht.';
+  }
+});
+$('lockCancel').onclick = () => { if (started) $('lock').hidden = true; else startApp(); };
+$('lockForgot').onclick = async () => {
+  if (!await askConfirm('Ohne Code lassen sich die gespeicherten Zeiten nicht entschlüsseln. Alle Daten in diesem Browser löschen und mit einem neuen Code neu beginnen?', 'Alles löschen')) return;
+  try { [ENC_KEY, STORAGE_KEY, WAIT_KEY].forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignorieren */ }
+  showLock('create');
+};
+// Sperren ohne Neuladen: entschlüsselte Daten aus dem Speicher werfen und das Ziffernfeld zeigen
+async function lockApp() {
+  await flushSave();
+  cryptoKey = null;
+  cryptoSalt = null;
+  Object.assign(state, { entries: [], projects: [], running: null, catColors: {}, sync: undefined });
+  closeColorMenu();
+  history.length = 0;
+  future.length = 0;
+  selectedId = null;
+  $('editor').hidden = true;
+  render();
+  showLock('unlock');
+}
+$('lockNow').onclick = lockApp;
+$('changePw').onclick = () => showLock('change');
+
 // ---------- Start ----------
-load();
-$('snap').value = String(state.snap);
 renderThemeToggle();
-render();
-setInterval(tick, 1000);
+if (!window.crypto?.subtle) {
+  $('lockText').textContent = 'Dieser Browser unterstützt keine Verschlüsselung. Bitte die Seite über https öffnen.';
+  $('pinpad').querySelectorAll('button').forEach(el => { el.disabled = true; });
+} else {
+  const rec = readEncrypted();
+  showLock(!rec ? 'create' : rec.kind === 'pin' ? 'unlock' : 'legacy');
+}
