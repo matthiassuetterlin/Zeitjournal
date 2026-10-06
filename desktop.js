@@ -154,11 +154,40 @@
   }
   window.addEventListener('mousemove', ev => updateInteractive(ev.clientX, ev.clientY));
 
-  // Gesperrt: Kacheln verbergen, nur das Ziffernfeld zeigen
+  // Gesperrt: Kacheln verbergen. Oben rechts bleibt ein kleines Etikett mit Schloss,
+  // erst ein Klick darauf öffnet das Ziffernfeld.
   const lock = $('lock');
-  let laidOut = false;
+  const badge = document.createElement('button');
+  badge.id = 'lockBadge';
+  badge.title = 'Zeitjournal entsperren';
+  badge.innerHTML = '<span>Zeitjournal</span><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">'
+    + '<rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/>'
+    + '<path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>';
+  document.body.append(badge);
+  const collapse = document.createElement('button');
+  collapse.className = 'lock-collapse';
+  collapse.textContent = '×';
+  collapse.title = 'Ziffernfeld schließen';
+  document.querySelector('.lock-card').append(collapse);
+  const setCollapsed = on => {
+    document.documentElement.classList.toggle('lock-collapsed', on);
+    interactive = null;   // Maus-Durchlass beim nächsten Bewegen neu bestimmen
+  };
+  badge.onclick = () => setCollapsed(false);
+  collapse.onclick = () => setCollapsed(true);
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !lock.hidden && !document.documentElement.classList.contains('lock-collapsed')) {
+      if (lockMode === 'unlock') setCollapsed(true);
+    }
+  });
+  let laidOut = false, wasLocked = null;
   const syncLock = () => {
-    document.documentElement.classList.toggle('locked', !lock.hidden);
+    const locked = !lock.hidden;
+    document.documentElement.classList.toggle('locked', locked);
+    // Beim Sperren (und beim Start mit vorhandenem Code) nur das Etikett zeigen
+    if (locked && wasLocked !== true) setCollapsed(lockMode === 'unlock');
+    if (!locked) setCollapsed(false);
+    wasLocked = locked;
     // Erst nach dem Entsperren ist alles gezeichnet und die Kachelhöhen stimmen
     if (lock.hidden && !laidOut) { laidOut = true; requestAnimationFrame(() => { if (!applySaved()) defaultLayout(); }); }
   };

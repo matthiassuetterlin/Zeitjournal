@@ -35,6 +35,8 @@ function createWindow() {
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, 'web', 'index.html'));
   win.once('ready-to-show', () => win.showInactive());
+  // Nach jedem Laden den Maus-Durchlass neu setzen, sonst kommen die Mausbewegungen nicht mehr an
+  win.webContents.on('did-finish-load', () => win.setIgnoreMouseEvents(true, { forward: true }));
   // Links öffnen im Browser, nicht im Kachel-Fenster
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (ev, url) => { if (!url.startsWith('file:')) ev.preventDefault(); });

@@ -1048,10 +1048,20 @@ $('lockForgot').onclick = async () => {
   try { [ENC_KEY, STORAGE_KEY, WAIT_KEY].forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignorieren */ }
   showLock('create');
 };
-$('lockNow').onclick = async () => {
+// Sperren ohne Neuladen: entschlüsselte Daten aus dem Speicher werfen und das Ziffernfeld zeigen
+async function lockApp() {
   await flushSave();
-  location.reload();
-};
+  cryptoKey = null;
+  cryptoSalt = null;
+  Object.assign(state, { entries: [], projects: [], running: null });
+  history.length = 0;
+  future.length = 0;
+  selectedId = null;
+  $('editor').hidden = true;
+  render();
+  showLock('unlock');
+}
+$('lockNow').onclick = lockApp;
 $('changePw').onclick = () => showLock('change');
 
 // ---------- Start ----------

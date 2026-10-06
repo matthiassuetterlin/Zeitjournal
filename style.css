@@ -471,3 +471,26 @@ html.desktop .dialog-backdrop { background: transparent; }
 .tile-body > .topbar .clock { margin-left: 0; width: 100%; flex-wrap: wrap; row-gap: 6px; }
 .tile-body > .topbar .running-info { flex: 1 0 100%; order: 1; min-height: 1.3em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile-body > .topbar button { white-space: nowrap; }
+#lockBadge { display: none; }
+html.desktop.locked.lock-collapsed .lock { display: none; }
+html.desktop.locked.lock-collapsed #lockBadge {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+html.desktop.locked.lock-collapsed #lockBadge:hover { border-color: var(--line-strong); }
+.lock-collapse { display: none; }
+html.desktop .lock-card { position: relative; }
+html.desktop .lock-collapse { display: block; position: absolute; top: 8px; right: 8px; border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 4px 8px; }
+html.desktop .lock-card:has(#lockCancel:not([hidden])) .lock-collapse { display: none; }
