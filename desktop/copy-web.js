@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const out = path.join(__dirname, 'web');
 fs.mkdirSync(out, { recursive: true });
-for (const f of ['index.html', 'app.js', 'style.css', 'desktop.js', 'sync.js']) {
+for (const f of ['index.html', 'app.js', 'style.css', 'desktop.js', 'sync.js', 'icon.svg']) {
   fs.copyFileSync(path.join(__dirname, '..', f), path.join(out, f));
 }
 console.log('Web-App nach desktop/web kopiert');
