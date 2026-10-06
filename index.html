@@ -31,10 +31,24 @@
   <main>
     <section class="day">
       <div class="day-tools">
+        <button id="undo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+        <button id="redo" title="Wiederholen (Strg+Umschalt+Z)">↷ Wiederholen</button>
+        <span class="spacer"></span>
         <span class="label">Zoom</span>
         <button id="zoomOut" title="Herauszoomen (Strg + Mausrad)">−</button>
         <button id="zoomFit" title="Ganzen Tag auf einmal zeigen">Ganzer Tag</button>
         <button id="zoomIn" title="Hineinzoomen, damit kurze Blöcke breiter werden (Strg + Mausrad)">+</button>
+        <button class="info" id="infoBtn" aria-describedby="infoTip" aria-label="Wie es funktioniert">i</button>
+        <div class="infotip" id="infoTip" role="tooltip">
+          <ul>
+            <li>Auf der leeren Leiste ziehen: neuer Block (Klick: eine Stunde)</li>
+            <li>Block ziehen: verschieben · Ränder ziehen: länger oder kürzer</li>
+            <li>Doppelklick: benennen · Entf: löschen · Strg+Z: rückgängig</li>
+            <li>Kategorie oder Projekt: oben anklicken oder Tasten 1–5</li>
+            <li>Start: Uhr läuft mit, bis du Stopp drückst (Leertaste)</li>
+            <li>Zoom: + / − oder Strg+Mausrad · Griff unter der Leiste: höher</li>
+          </ul>
+        </div>
       </div>
       <div class="track-scroll" id="trackScroll">
         <div class="track-inner" id="trackInner">
@@ -43,7 +57,7 @@
         </div>
       </div>
       <div class="resize-y" id="trackResize" role="separator" aria-orientation="horizontal" aria-label="Höhe der Zeitleiste ändern" tabindex="0" title="Ziehen = Zeitleiste höher/niedriger · Doppelklick = zurücksetzen"></div>
-      <p class="hint">Auf der leeren Leiste ziehen = neuer Block · Block ziehen = verschieben · Ränder ziehen = länger/kürzer · Doppelklick = umbenennen · Entf = löschen · + / Strg+Mausrad = hineinzoomen · Griff unter der Leiste = höher</p>
+
     </section>
 
     <div class="overview">

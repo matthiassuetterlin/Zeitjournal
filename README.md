@@ -25,6 +25,7 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | Stoppuhr | Start/Stopp oder Leertaste; Kategorie wechseln, während sie läuft, schließt den Block und beginnt einen neuen |
 | Zoom | + / − oben an der Zeitleiste, Strg+Mausrad oder Tasten +/−; „Ganzer Tag“ zeigt wieder alles |
 | Bereiche größer ziehen | Griff unter der Zeitleiste nach unten ziehen; Trenner zwischen Monat und Woche seitlich ziehen; Doppelklick setzt zurück |
-| Rückgängig | Strg+Z |
+| Rückgängig / Wiederholen | Knöpfe über der Zeitleiste, oder Strg+Z und Strg+Umschalt+Z |
+| Hilfe | Das i-Symbol über der Zeitleiste zeigt beim Darüberfahren, wie alles funktioniert |
 | Tage wechseln | ← / → / T, oder in der Monats- oder Wochenübersicht auf einen Tag klicken |
 | Monatsübersicht | Jeder Tag zeigt Stunden und einen Farbstreifen, was gearbeitet wurde; ‹ › blättert die Monate |

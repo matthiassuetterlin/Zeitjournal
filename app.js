@@ -30,7 +30,8 @@ const entryColor = e => (e.cat === 'projekte' && projById(e.project)?.color) || 
 const entryLabel = e => (e.cat === 'projekte' && projById(e.project)?.name) || catById(e.cat).name;
 let viewDate = toDateStr(new Date());
 let selectedId = null;
-const history = [];
+const history = [];   // Zustände vor einer Änderung
+const future = [];    // für Wiederholen zurückgelegte Zustände
 
 function load() {
   try {
@@ -42,16 +43,26 @@ function load() {
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignorieren */ }
 }
+const snapState = () => JSON.stringify({ entries: state.entries, projects: state.projects });
 function snapshot() {
-  history.push(JSON.stringify({ entries: state.entries, projects: state.projects }));
+  history.push(snapState());
   if (history.length > 100) history.shift();
+  future.length = 0;   // nach einer neuen Änderung gibt es nichts mehr zu wiederholen
 }
-function undo() {
-  if (!history.length) return;
-  Object.assign(state, JSON.parse(history.pop()));
+function stepHistory(from, to) {
+  if (!from.length) return;
+  to.push(snapState());
+  Object.assign(state, JSON.parse(from.pop()));
   if (state.running && !state.entries.some(e => e.id === state.running)) state.running = null;
+  selectedId = null;
   save();
   render();
+}
+const undo = () => stepHistory(history, future);
+const redo = () => stepHistory(future, history);
+function renderHistoryButtons() {
+  $('undo').disabled = !history.length;
+  $('redo').disabled = !future.length;
 }
 
 // ---------- Helfer ----------
@@ -117,6 +128,7 @@ const $ = id => document.getElementById(id);
 const track = $('track');
 
 function render() {
+  renderHistoryButtons();
   // Die Monatsansicht folgt dem gewählten Tag, bis man selbst blättert
   if (viewDate !== lastViewDate) { monthView = viewDate.slice(0, 7); lastViewDate = viewDate; }
   renderHeader();
@@ -587,6 +599,7 @@ function endDrag() {
     }
   } else if (!drag.moved) {
     history.pop(); // reiner Klick zum Markieren ist keine Änderung
+    renderHistoryButtons();
   }
   drag = null;
   save();
@@ -641,7 +654,8 @@ $('editorInput').addEventListener('blur', () => closeEditor(true));
 // ---------- Tastatur ----------
 document.addEventListener('keydown', ev => {
   if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
-  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); undo(); return; }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
   if (ev.key === ' ') { ev.preventDefault(); $('startStop').click(); }
   else if (ev.key === 'Delete' || ev.key === 'Backspace') deleteSelected();
   else if (ev.key === 'Escape') { selectedId = null; render(); }
@@ -661,6 +675,8 @@ document.addEventListener('pointerdown', ev => {
 });
 
 // ---------- Knöpfe ----------
+$('undo').onclick = undo;
+$('redo').onclick = redo;
 $('startStop').onclick = () => (state.running ? stopTimer() : startTimer());
 $('prevDay').onclick = () => { viewDate = addDays(viewDate, -1); selectedId = null; render(); };
 $('nextDay').onclick = () => { viewDate = addDays(viewDate, 1); selectedId = null; render(); };
