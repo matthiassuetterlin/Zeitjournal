@@ -67,6 +67,17 @@
     <input id="editorInput" type="text" placeholder="Bezeichnung (optional)">
   </div>
 
+  <div id="confirmDialog" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirmText">
+      <p id="confirmText"></p>
+      <div class="dialog-actions">
+        <button id="confirmCancel">Abbrechen</button>
+        <button id="confirmOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
   <script src="app.js"></script>
 </body>
 </html>

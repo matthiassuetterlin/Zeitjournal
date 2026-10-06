@@ -47,6 +47,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -265,6 +266,15 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 .projmenu .empty { padding: 6px 8px; color: var(--muted); font-size: 13px; }
 .sumrow.subrow { font-size: 12px; color: var(--muted); padding: 1px 0; }
 .sumrow.subrow > span:first-child { padding-left: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Rückfrage und Hinweis */
+.dialog-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 20px; max-width: 420px; width: 100%; }
+.dialog p { margin: 0 0 16px; line-height: 1.45; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); font-weight: 600; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--panel); padding: 10px 16px; border-radius: 8px; box-shadow: var(--shadow); z-index: 60; font-size: 14px; max-width: calc(100% - 32px); }
+button:focus-visible, .filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 700px) {
   .summary-grid { grid-template-columns: 1fr; }

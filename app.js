@@ -234,10 +234,10 @@ function renderProjectMenu() {
   m.appendChild(row);
   return m;
 }
-function deleteProject(id) {
+async function deleteProject(id) {
   const pr = projById(id);
   const used = state.entries.filter(e => e.project === id).length;
-  if (!confirm(`Projekt „${pr.name}“ löschen?` + (used ? ` ${used} Block/Blöcke bleiben unter „Projekte“ ohne Projektnamen erhalten.` : ''))) return;
+  if (!await askConfirm(`Projekt „${pr.name}“ löschen?` + (used ? ` ${used} Block/Blöcke bleiben unter „Projekte“ ohne Projektnamen erhalten.` : ''), 'Löschen')) return;
   snapshot();
   state.projects = state.projects.filter(p => p.id !== id);
   for (const e of state.entries) if (e.project === id) e.project = null;
@@ -598,10 +598,10 @@ $('nextDay').onclick = () => { viewDate = addDays(viewDate, 1); selectedId = nul
 $('today').onclick = () => { viewDate = toDateStr(new Date()); selectedId = null; render(); };
 $('snap').onchange = ev => { state.snap = Number(ev.target.value); save(); };
 
-$('copyYesterday').onclick = () => {
+$('copyYesterday').onclick = async () => {
   const src = [...new Set(state.entries.map(e => e.date))].filter(d => d < viewDate).sort().pop();
-  if (!src) { alert('Kein früherer Tag mit Einträgen gefunden.'); return; }
-  if (dayEntries(viewDate).length && !confirm('Für diesen Tag gibt es schon Blöcke. Trotzdem Blöcke vom ' + parseDate(src).toLocaleDateString('de-DE') + ' dazu übernehmen (nur in freie Lücken)?')) return;
+  if (!src) { toast('Kein früherer Tag mit Einträgen gefunden.'); return; }
+  if (dayEntries(viewDate).length && !await askConfirm('Für diesen Tag gibt es schon Blöcke. Trotzdem Blöcke vom ' + parseDate(src).toLocaleDateString('de-DE') + ' dazu übernehmen (nur in freie Lücken)?', 'Übernehmen')) return;
   snapshot();
   for (const e of dayEntries(src)) {
     const g = gapAt(viewDate, e.start);
@@ -612,7 +612,14 @@ $('copyYesterday').onclick = () => {
   render();
 };
 
-function download(name, text, type) {
+// In eine fremde Seite eingebettet (z. B. als Artifact) sind Downloads gesperrt: dann in die Zwischenablage kopieren.
+const embedded = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+async function download(name, text, type) {
+  if (embedded) {
+    try { await navigator.clipboard.writeText(text.replace(/^\ufeff/, '')); toast(`${name} in die Zwischenablage kopiert.`); }
+    catch (e) { toast('Herunterladen ist hier nicht möglich. Öffne das Zeitjournal im Browser.'); }
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type }));
   a.download = name;
@@ -634,17 +641,41 @@ $('importJson').onchange = async ev => {
   try {
     const data = JSON.parse(await f.text());
     if (!Array.isArray(data.entries)) throw new Error();
-    if (!confirm(`${data.entries.length} Einträge laden? Die aktuellen Daten werden ersetzt.`)) return;
+    if (!await askConfirm(`${data.entries.length} Einträge laden? Die aktuellen Daten werden ersetzt.`, 'Laden')) return;
     snapshot();
     Object.assign(state, { projects: [] }, data);
     save();
     render();
   } catch (e) {
-    alert('Die Datei konnte nicht gelesen werden.');
+    toast('Die Datei konnte nicht gelesen werden.');
   } finally {
     ev.target.value = '';
   }
 };
+
+// ---------- Rückfragen & Hinweise (statt confirm/alert, die eingebettet nicht funktionieren) ----------
+function askConfirm(text, okLabel = 'OK') {
+  return new Promise(resolve => {
+    const d = $('confirmDialog');
+    $('confirmText').textContent = text;
+    $('confirmOk').textContent = okLabel;
+    d.hidden = false;
+    $('confirmOk').focus();
+    const done = v => { d.hidden = true; document.removeEventListener('keydown', key, true); resolve(v); };
+    const key = ev => { if (ev.key === 'Escape') { ev.stopPropagation(); done(false); } };
+    document.addEventListener('keydown', key, true);
+    $('confirmOk').onclick = () => done(true);
+    $('confirmCancel').onclick = () => done(false);
+  });
+}
+let toastTimer = null;
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3500);
+}
 
 // ---------- Hell / Dunkel ----------
 function currentTheme() {
