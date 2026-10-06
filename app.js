@@ -469,29 +469,40 @@ function renderMonth() {
 $('prevMonth').onclick = () => { monthView = shiftMonth(monthView, -1); renderMonth(); };
 $('nextMonth').onclick = () => { monthView = shiftMonth(monthView, 1); renderMonth(); };
 
-// Summen je Zeile: Kategorien und einzelne Projekte, in der Reihenfolge ihres ersten Blocks in der Zeitleiste.
+// Summen in der Reihenfolge ihres ersten Blocks in der Zeitleiste. „Projekte“ bleibt eine Gruppe:
+// die Zeile steht dort, wo der erste Projektblock vorkommt, die einzelnen Projekte eingerückt darunter.
 // Kategorien ohne Zeit stehen mit 0:00 am Ende.
 function sums(dates) {
   const rows = new Map();
   const list = state.entries.filter(e => dates.includes(e.date))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   for (const e of list) {
-    const pr = e.cat === 'projekte' ? projById(e.project) : null;
-    const key = pr ? 'p:' + pr.id : e.cat;
-    if (!rows.has(key)) rows.set(key, { name: pr ? pr.name : catById(e.cat).name, color: pr ? pr.color : catById(e.cat).color, v: 0 });
-    rows.get(key).v += e.end - e.start;
+    const c = catById(e.cat);
+    if (!rows.has(c.id)) rows.set(c.id, { name: c.name, color: c.color, v: 0, subs: new Map() });
+    const row = rows.get(c.id);
+    row.v += e.end - e.start;
+    if (c.id !== 'projekte') continue;
+    const pr = projById(e.project);
+    const k = pr ? pr.id : '';
+    if (!row.subs.has(k)) row.subs.set(k, { name: pr ? pr.name : 'ohne Projekt', color: pr ? pr.color : c.color, v: 0 });
+    row.subs.get(k).v += e.end - e.start;
   }
-  const used = new Set(list.map(e => e.cat));
-  for (const c of CATEGORIES) if (!used.has(c.id)) rows.set(c.id, { name: c.name, color: c.color, v: 0 });
+  for (const c of CATEGORIES) if (!rows.has(c.id)) rows.set(c.id, { name: c.name, color: c.color, v: 0, subs: new Map() });
   return [...rows.values()];
 }
 const esc = t => t.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 function renderSums(el, rows) {
   const total = rows.reduce((a, r) => a + r.v, 0);
-  el.innerHTML = rows.map(r => `
-    <div class="sumrow${r.v ? '' : ' zero'}"><span>${esc(r.name)}</span>
+  const row = (cls, r) => `
+    <div class="sumrow ${cls}"><span>${esc(r.name)}</span>
       <div class="sumbar"><div style="width:${total ? (r.v / total) * 100 : 0}%;background:${r.color}"></div></div>
-      <span class="v">${fmtDur(r.v)}</span></div>`).join('') +
+      <span class="v">${fmtDur(r.v)}</span></div>`;
+  el.innerHTML = rows.map(r => {
+    // Nur „ohne Projekt“ allein braucht keine Unterzeile
+    const subs = [...r.subs.values()];
+    const showSubs = subs.length > 1 || (subs.length === 1 && subs[0].name !== 'ohne Projekt');
+    return row(r.v ? '' : 'zero', r) + (showSubs ? subs.map(x => row('subrow', x)).join('') : '');
+  }).join('') +
     `<div class="sumrow sumtotal"><span>Gesamt</span><span></span><span class="v">${fmtDur(total)}</span></div>`;
 }
 function renderSummary() {

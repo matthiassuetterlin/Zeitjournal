@@ -63,6 +63,13 @@
       + '<div class="tile-body"></div>';
     t.querySelector('.tile-body').append(d.el());
     t.querySelector('.tile-close').onclick = () => setHidden(id, true);
+    // Griff unten am Modul (nur wenn die Module untereinander stehen)
+    const grip = document.createElement('div');
+    grip.className = 'tile-grip';
+    grip.title = 'Ziehen = Modul höher/niedriger · Doppelklick = passend zum Inhalt';
+    grip.addEventListener('pointerdown', ev => begin(ev, { kind: 'flowH', id, h0: t.offsetHeight, y0: ev.clientY }));
+    grip.addEventListener('dblclick', () => { if (L.flowH) delete L.flowH[id]; layout(); });
+    t.append(grip);
     tiles[id] = t;
   }
   // Monat und Woche liegen jetzt in eigenen Modulen, die alte Übersicht samt Trenngriff wird nicht mehr gebraucht
@@ -110,7 +117,14 @@
     geo = [];
     rows.forEach((r, i) => {
       const h = Math.round(rowH(r));
-      if (flow) { put(r.mods[0], 0, 0, W, 0); tiles[r.mods[0]].style.cssText = ''; return; }
+      if (flow) {
+        // Untereinander: jedes Modul so hoch wie sein Inhalt, außer man hat es am Griff unten anders gezogen
+        const id = r.mods[0], t = tiles[id], fh = L.flowH?.[id];
+        put(id, 0, 0, W, 0);
+        t.style.cssText = fh ? `height:${fh}px` : '';
+        t.classList.toggle('sized', !!fh);
+        return;
+      }
       if (i) {
         const g = gutter('row', i);
         Object.assign(g.style, { left: '0px', top: (y - GAP) + 'px', width: W + 'px', height: GAP + 'px' });
@@ -203,7 +217,10 @@
       place(ev.clientX - drag.dx, ev.clientY - drag.dy);
       return;
     }
-    if (drag.kind === 'row') {
+    if (drag.kind === 'flowH') {
+      L.flowH = L.flowH || {};
+      L.flowH[drag.id] = Math.max(MIN_H, Math.round(drag.h0 + ev.clientY - drag.y0));
+    } else if (drag.kind === 'row') {
       const ha = Math.max(MIN_H, Math.min(drag.total - MIN_H, drag.ha + ev.clientY - drag.y0));
       L.rowH[drag.a] = ha;
       L.rowH[drag.b] = drag.total - ha;
