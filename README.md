@@ -23,6 +23,7 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | Hell/Dunkel | ☾/☀ oben rechts (startet passend zur Systemeinstellung) |
 | Löschen | Block anklicken, Entf |
 | Stoppuhr | Start/Stopp oder Leertaste; Kategorie wechseln, während sie läuft, schließt den Block und beginnt einen neuen |
+| Zoom | + / − oben an der Zeitleiste, Strg+Mausrad oder Tasten +/−; „Ganzer Tag“ zeigt wieder alles |
 | Bereiche größer ziehen | Griff unter der Zeitleiste nach unten ziehen; Trenner zwischen Monat und Woche seitlich ziehen; Doppelklick setzt zurück |
 | Rückgängig | Strg+Z |
 | Tage wechseln | ← / → / T, oder in der Monats- oder Wochenübersicht auf einen Tag klicken |

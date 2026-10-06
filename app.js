@@ -253,6 +253,12 @@ function renderTrack() {
   const { lo, hi } = viewRange();
   const span = hi - lo;
   const pct = m => ((m - lo) / span) * 100;
+  // Zoom: Breite pro Stunde; 0 = ganzer Bereich passt ins Fenster
+  const scroller = $('trackScroll');
+  const fitPx = scroller.clientWidth / (span / 60);
+  const hourPx = Math.max(fitPx, layout.hourPx || 0);
+  $('trackInner').style.width = hourPx > fitPx + 0.5 ? `${(span / 60) * hourPx}px` : '100%';
+  $('zoomFit').classList.toggle('active', !(hourPx > fitPx + 0.5));
   track.innerHTML = '';
   const scale = $('scale');
   scale.innerHTML = '';
@@ -265,6 +271,8 @@ function renderTrack() {
       const s = document.createElement('span');
       s.textContent = `${m / 60}:00`;
       s.style.left = pct(m) + '%';
+      if (m === lo) s.style.transform = 'none';           // Randbeschriftung nicht abschneiden
+      if (m === hi) s.style.transform = 'translateX(-100%)';
       scale.appendChild(s);
     }
   }
@@ -274,14 +282,14 @@ function renderTrack() {
     n.style.left = pct(nowMinutes()) + '%';
     track.appendChild(n);
   }
-  const trackW = track.clientWidth, trackH = track.clientHeight;
+  const trackW = track.clientWidth;
   for (const e of dayEntries(viewDate)) {
     const c = catById(e.cat);
     const el = document.createElement('div');
-    // Schmale Blöcke beschriften wir senkrecht, damit Wörter nicht in Silben zerfallen
+    // Schmale Blöcke: einzeilig mit „…“ (voller Text im Tooltip), sehr schmale nur Farbe
     const wPx = ((e.end - e.start) / span) * trackW;
-    const vertical = wPx < 80 && trackH - 16 > wPx * 1.3;
-    el.className = 'block' + (vertical ? ' vertical' : '') + (vertical && wPx < 46 ? ' tight' : '') + (e.id === selectedId ? ' selected' : '') + (e.id === state.running ? ' running' : '');
+    const size = wPx < 28 ? ' tiny' : wPx < 110 ? ' narrow' : '';
+    el.className = 'block' + size + (e.id === selectedId ? ' selected' : '') + (e.id === state.running ? ' running' : '');
     el.dataset.id = e.id;
     el.style.left = pct(e.start) + '%';
     el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
@@ -293,6 +301,13 @@ function renderTrack() {
     track.appendChild(el);
   }
   track._range = { lo, hi };
+  // Beim Tageswechsel an die interessante Stelle scrollen (jetzt bzw. erster Block)
+  if (scroller._date !== viewDate) {
+    scroller._date = viewDate;
+    const first = dayEntries(viewDate)[0];
+    const target = viewDate === toDateStr(new Date()) ? nowMinutes() - 120 : first ? first.start - 30 : lo;
+    scroller.scrollLeft = Math.max(0, ((target - lo) / span) * trackW);
+  }
 }
 
 function renderWeek() {
@@ -634,6 +649,8 @@ document.addEventListener('keydown', ev => {
   else if (ev.key === 'ArrowLeft') $('prevDay').click();
   else if (ev.key === 'ArrowRight') $('nextDay').click();
   else if (ev.key.toLowerCase() === 't') $('today').click();
+  else if (ev.key === '+') zoomTimeline(1.6);
+  else if (ev.key === '-') zoomTimeline(1 / 1.6);
   else if (/^[1-9]$/.test(ev.key) && CATEGORIES[ev.key - 1]) chooseCategory(CATEGORIES[ev.key - 1].id);
 });
 
@@ -707,12 +724,13 @@ $('importJson').onchange = async ev => {
 
 // ---------- Bereiche größer/kleiner ziehen ----------
 const LAYOUT_KEY = 'zeitjournal.layout';
-const LAYOUT_DEFAULT = { trackH: 120, monthW: 340 };
+const LAYOUT_DEFAULT = { trackH: 120, monthW: 340, hourPx: 0 };
 let layout = { ...LAYOUT_DEFAULT };
 try { Object.assign(layout, JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}); } catch (e) { /* Standard */ }
 function applyLayout() {
   layout.trackH = clamp(Math.round(layout.trackH), 70, 520);
   layout.monthW = clamp(Math.round(layout.monthW), 240, 760);
+  layout.hourPx = Math.max(0, Number(layout.hourPx) || 0);
   document.documentElement.style.setProperty('--track-h', layout.trackH + 'px');
   document.documentElement.style.setProperty('--month-w', layout.monthW + 'px');
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (e) { /* ignorieren */ }
@@ -752,6 +770,32 @@ function makeResizer(el, key, axis, step) {
   });
 }
 makeResizer($('trackResize'), 'trackH', 'y', 20);
+
+// Zoom der Zeitleiste; der Punkt unter der Maus (oder die Mitte) bleibt stehen
+function zoomTimeline(factor, clientX) {
+  const sc = $('trackScroll');
+  const { lo, hi } = track._range;
+  const fitPx = sc.clientWidth / ((hi - lo) / 60);
+  const cur = Math.max(fitPx, layout.hourPx || 0);
+  const r = sc.getBoundingClientRect();
+  const anchorX = clientX === undefined ? sc.clientWidth / 2 : clientX - r.left;
+  const anchorMin = lo + ((sc.scrollLeft + anchorX) / (cur * (hi - lo) / 60)) * (hi - lo);
+  let next = clamp(cur * factor, fitPx, 900);
+  layout.hourPx = next <= fitPx + 0.5 ? 0 : next;
+  applyLayout();
+  renderTrack();
+  const w = (hi - lo) / 60 * Math.max(fitPx, layout.hourPx);
+  sc.scrollLeft = ((anchorMin - lo) / (hi - lo)) * w - anchorX;
+}
+$('zoomIn').onclick = () => zoomTimeline(1.6);
+$('zoomOut').onclick = () => zoomTimeline(1 / 1.6);
+$('zoomFit').onclick = () => { layout.hourPx = 0; applyLayout(); renderTrack(); };
+$('trackScroll').addEventListener('wheel', ev => {
+  if (!ev.ctrlKey && !ev.metaKey) return;
+  ev.preventDefault();
+  zoomTimeline(ev.deltaY < 0 ? 1.25 : 0.8, ev.clientX);
+}, { passive: false });
+window.addEventListener('resize', () => renderTrack());
 makeResizer($('monthResize'), 'monthW', 'x', 20);
 applyLayout();
 

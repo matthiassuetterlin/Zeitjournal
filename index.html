@@ -30,10 +30,20 @@
 
   <main>
     <section class="day">
-      <div class="scale" id="scale"></div>
-      <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
+      <div class="day-tools">
+        <span class="label">Zoom</span>
+        <button id="zoomOut" title="Herauszoomen (Strg + Mausrad)">−</button>
+        <button id="zoomFit" title="Ganzen Tag auf einmal zeigen">Ganzer Tag</button>
+        <button id="zoomIn" title="Hineinzoomen, damit kurze Blöcke breiter werden (Strg + Mausrad)">+</button>
+      </div>
+      <div class="track-scroll" id="trackScroll">
+        <div class="track-inner" id="trackInner">
+          <div class="scale" id="scale"></div>
+          <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
+        </div>
+      </div>
       <div class="resize-y" id="trackResize" role="separator" aria-orientation="horizontal" aria-label="Höhe der Zeitleiste ändern" tabindex="0" title="Ziehen = Zeitleiste höher/niedriger · Doppelklick = zurücksetzen"></div>
-      <p class="hint">Auf der leeren Leiste ziehen = neuer Block · Block ziehen = verschieben · Ränder ziehen = länger/kürzer · Doppelklick = umbenennen · Entf = löschen · Griff unter der Leiste ziehen = höher</p>
+      <p class="hint">Auf der leeren Leiste ziehen = neuer Block · Block ziehen = verschieben · Ränder ziehen = länger/kürzer · Doppelklick = umbenennen · Entf = löschen · + / Strg+Mausrad = hineinzoomen · Griff unter der Leiste = höher</p>
     </section>
 
     <div class="overview">

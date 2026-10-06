@@ -113,7 +113,8 @@ button:hover, .filebtn:hover { border-color: var(--line-strong); }
   padding: 0 4px;
 }
 
-main { padding: 0 24px 24px; display: grid; gap: 20px; }
+main { padding: 0 24px 24px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+main > *, .overview > * { min-width: 0; }
 main section {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -156,17 +157,17 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
   z-index: 2;
   overflow-wrap: break-word;
 }
-.block.vertical { padding: 8px 4px; }
-.block.vertical .title, .block.vertical .meta {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-height: 100%;
-}
-.block.tight .meta { display: none; }
-.block.vertical { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 2px; }
+.block.narrow { padding: 6px 5px; }
+.block.narrow .title, .block.narrow .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.block.tiny { padding: 0; }
+.block.tiny .title, .block.tiny .meta { display: none; }
+
+.day-tools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 6px; font-size: 13px; }
+.day-tools .label { color: var(--muted); margin-right: 2px; }
+.day-tools button { padding: 3px 10px; }
+.day-tools button.active { border-color: var(--line-strong); font-weight: 600; }
+.track-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+.track-inner { min-width: 100%; }
 .block:active { cursor: grabbing; }
 .block.selected { outline: 3px solid var(--text); outline-offset: 1px; z-index: 4; }
 .block.running { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.15) 0 8px, transparent 8px 16px); }
