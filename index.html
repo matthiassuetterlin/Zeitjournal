@@ -23,6 +23,7 @@
       <span id="runningInfo" class="running-info"></span>
       <button id="startStop" class="startstop" title="Start/Stopp (Leertaste)">▶ Start</button>
       <button id="themeToggle" class="theme-toggle" title="Hell/Dunkel umschalten"></button>
+      <button id="lockNow" title="Zeitjournal sperren">🔒 Sperren</button>
     </div>
   </header>
 
@@ -100,7 +101,27 @@
     <button id="exportCsv">CSV exportieren</button>
     <button id="exportJson">Sicherung speichern</button>
     <label class="filebtn">Sicherung laden<input type="file" id="importJson" accept="application/json"></label>
+    <button id="changePw">Passwort ändern</button>
   </footer>
+
+  <div id="lock" class="lock">
+    <form id="lockForm" class="lock-card" autocomplete="on">
+      <h1>Zeitjournal</h1>
+      <p id="lockText"></p>
+      <label for="pw1" id="pw1Label">Passwort</label>
+      <input type="password" id="pw1" autocomplete="current-password" required>
+      <div id="pw2Row" hidden>
+        <label for="pw2">Passwort wiederholen</label>
+        <input type="password" id="pw2" autocomplete="new-password">
+      </div>
+      <p id="lockError" class="lock-error" role="alert"></p>
+      <div class="lock-actions">
+        <button type="button" id="lockCancel" hidden>Abbrechen</button>
+        <button type="submit" id="lockBtn" class="primary">Entsperren</button>
+      </div>
+      <button type="button" id="lockForgot" class="linklike">Passwort vergessen?</button>
+    </form>
+  </div>
 
   <div id="editor" class="editor" hidden>
     <input id="editorInput" type="text" placeholder="Bezeichnung (optional)">

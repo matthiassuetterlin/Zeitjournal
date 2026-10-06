@@ -10,7 +10,7 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 
 ## Benutzen
 
-`index.html` im Browser öffnen, fertig. Es gibt keinen Server: die Daten bleiben im Browser (localStorage). Über „Sicherung speichern/laden“ lassen sie sich als Datei sichern oder auf einen anderen Rechner mitnehmen. Mit GitHub Pages läuft die App direkt aus dem Repo.
+`index.html` im Browser öffnen, fertig. Beim ersten Öffnen legst du ein Passwort fest; danach fragt die App bei jedem Öffnen danach. Es gibt keinen Server: die Daten bleiben im Browser (localStorage). Über „Sicherung speichern/laden“ lassen sie sich als Datei sichern oder auf einen anderen Rechner mitnehmen. Mit GitHub Pages läuft die App direkt aus dem Repo.
 
 | Was | Wie |
 | --- | --- |
@@ -29,3 +29,8 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | Hilfe | Das i-Symbol über der Zeitleiste zeigt beim Darüberfahren, wie alles funktioniert |
 | Tage wechseln | ← / → / T, oder in der Monats- oder Wochenübersicht auf einen Tag klicken |
 | Monatsübersicht | Jeder Tag zeigt Stunden und einen Farbstreifen, was gearbeitet wurde; ‹ › blättert die Monate |
+
+## Passwortschutz
+
+Die Zeiten werden mit dem Passwort verschlüsselt (AES-GCM, Schlüssel per PBKDF2) im Browser gespeichert und nie an einen Server geschickt. Wer die Seite öffnet, sieht ohne Passwort nur die Anmeldung, und auch direkt aus dem Browser-Speicher lassen sich die Daten ohne Passwort nicht lesen. Der Programmcode selbst bleibt öffentlich, er enthält aber keine Daten. Ohne Passwort sind die Daten verloren; „Passwort vergessen?“ löscht sie und beginnt neu. Eine gespeicherte Sicherung (JSON) ist nicht verschlüsselt.
+

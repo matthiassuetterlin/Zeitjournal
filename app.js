@@ -33,15 +33,61 @@ let selectedId = null;
 const history = [];   // Zustände vor einer Änderung
 const future = [];    // für Wiederholen zurückgelegte Zustände
 
-function load() {
+// ---------- Speichern: mit dem Passwort verschlüsselt (AES-GCM, Schlüssel per PBKDF2) ----------
+const ENC_KEY = 'zeitjournal.v1.enc';  // { salt, iv, data } als Base64
+let cryptoKey = null;                  // gesetzt, sobald entsperrt
+let cryptoSalt = null;
+const te = new TextEncoder(), td = new TextDecoder();
+const toB64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pw, salt) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+function readEncrypted() {
+  try { return JSON.parse(localStorage.getItem(ENC_KEY)); } catch (e) { return null; }
+}
+// Alte, unverschlüsselte Daten (vor dem Passwortschutz)
+function loadPlain() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (saved && Array.isArray(saved.entries)) Object.assign(state, saved);
   } catch (e) { /* leerer Start */ }
   if (!Array.isArray(state.projects)) state.projects = [];
 }
+async function persist() {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, te.encode(JSON.stringify(state)));
+  localStorage.setItem(ENC_KEY, JSON.stringify({ v: 1, salt: toB64(cryptoSalt), iv: toB64(iv), data: toB64(data) }));
+}
+let saving = null, saveAgain = false;
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignorieren */ }
+  if (!cryptoKey) return;
+  if (saving) { saveAgain = true; return; }
+  saving = persist().catch(() => toast('Speichern hat nicht geklappt.')).finally(() => {
+    saving = null;
+    if (saveAgain) { saveAgain = false; save(); }
+  });
+}
+async function flushSave() {
+  while (saving) await saving;
+}
+async function unlockWith(pw) {
+  const rec = readEncrypted();
+  const salt = fromB64(rec.salt);
+  const key = await deriveKey(pw, salt);
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.data)); // wirft bei falschem Passwort
+  Object.assign(state, JSON.parse(td.decode(plain)));
+  if (!Array.isArray(state.projects)) state.projects = [];
+  cryptoKey = key; cryptoSalt = salt;
+}
+async function setPassword(pw) {
+  cryptoSalt = crypto.getRandomValues(new Uint8Array(16));
+  cryptoKey = await deriveKey(pw, cryptoSalt);
+  await flushSave();
+  await persist();
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignorieren */ }
 }
 const snapState = () => JSON.stringify({ entries: state.entries, projects: state.projects });
 function snapshot() {
@@ -484,6 +530,7 @@ function stopTimer() {
   render();
 }
 function tick() {
+  if (!cryptoKey) return;
   const e = state.entries.find(x => x.id === state.running);
   if (e) {
     const today = toDateStr(new Date());
@@ -663,6 +710,7 @@ $('editorInput').addEventListener('blur', () => closeEditor(true));
 
 // ---------- Tastatur ----------
 document.addEventListener('keydown', ev => {
+  if (!cryptoKey || !$('lock').hidden) return;
   if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
@@ -866,9 +914,75 @@ $('themeToggle').onclick = () => {
 };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderThemeToggle);
 
+// ---------- Anmeldung ----------
+let lockMode = 'unlock'; // 'create' | 'unlock' | 'change'
+function showLock(mode) {
+  lockMode = mode;
+  const create = mode !== 'unlock';
+  $('lockText').textContent = mode === 'create'
+    ? 'Lege ein Passwort fest. Deine Zeiten werden damit verschlüsselt in diesem Browser gespeichert.'
+    : mode === 'change' ? 'Neues Passwort festlegen.' : 'Bitte Passwort eingeben.';
+  $('pw1Label').textContent = create ? 'Neues Passwort' : 'Passwort';
+  $('pw1').autocomplete = create ? 'new-password' : 'current-password';
+  $('pw2Row').hidden = !create;
+  $('pw2').required = create;
+  $('lockBtn').textContent = mode === 'unlock' ? 'Entsperren' : 'Speichern';
+  $('lockCancel').hidden = mode !== 'change';
+  $('lockForgot').hidden = mode !== 'unlock';
+  $('lockError').textContent = '';
+  $('pw1').value = $('pw2').value = '';
+  $('lock').hidden = false;
+  $('pw1').focus();
+}
+let started = false;
+function startApp() {
+  $('lock').hidden = true;
+  $('snap').value = String(state.snap);
+  render();
+  if (!started) { started = true; setInterval(tick, 1000); }
+}
+$('lockForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const pw = $('pw1').value;
+  const btn = $('lockBtn');
+  $('lockError').textContent = '';
+  if (lockMode !== 'unlock') {
+    if (pw.length < 4) { $('lockError').textContent = 'Bitte mindestens 4 Zeichen.'; return; }
+    if (pw !== $('pw2').value) { $('lockError').textContent = 'Die beiden Passwörter sind nicht gleich.'; return; }
+  }
+  btn.disabled = true;
+  try {
+    if (lockMode === 'unlock') await unlockWith(pw);
+    else {
+      if (lockMode === 'create') loadPlain();
+      await setPassword(pw);
+      if (lockMode === 'change') toast('Passwort geändert.');
+    }
+    startApp();
+  } catch (e) {
+    $('lockError').textContent = lockMode === 'unlock' ? 'Das Passwort stimmt nicht.' : 'Das hat nicht geklappt. Bitte noch einmal versuchen.';
+    $('pw1').select();
+  } finally {
+    btn.disabled = false;
+  }
+});
+$('lockCancel').onclick = () => { $('lock').hidden = true; };
+$('lockForgot').onclick = async () => {
+  if (!await askConfirm('Ohne Passwort lassen sich die gespeicherten Zeiten nicht entschlüsseln. Alle Daten in diesem Browser löschen und mit einem neuen Passwort neu beginnen?', 'Alles löschen')) return;
+  try { localStorage.removeItem(ENC_KEY); localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignorieren */ }
+  showLock('create');
+};
+$('lockNow').onclick = async () => {
+  await flushSave();
+  location.reload();
+};
+$('changePw').onclick = () => showLock('change');
+
 // ---------- Start ----------
-load();
-$('snap').value = String(state.snap);
 renderThemeToggle();
-render();
-setInterval(tick, 1000);
+if (!window.crypto?.subtle) {
+  $('lockText').textContent = 'Dieser Browser unterstützt keine Verschlüsselung. Bitte die Seite über https öffnen.';
+  $('lockForm').querySelectorAll('input, button').forEach(el => { el.disabled = true; });
+} else {
+  showLock(readEncrypted() ? 'unlock' : 'create');
+}
