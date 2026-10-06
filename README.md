@@ -52,6 +52,7 @@ Selbst bauen: im Ordner `desktop` `npm install` und `npm run dist`. Zum Ausprobi
 Die Windows-App und die Webseite können ihre Zeiten über einen kleinen Online-Speicher (Supabase, kostenloser Plan) abgleichen. Der Knopf ☁ neben „Sperren“ richtet das ein: auf dem ersten Gerät „Neu einrichten“, auf jedem weiteren „Schlüssel eingeben“ und den Sync-Schlüssel vom ersten Gerät einfügen.
 
 - Hochgeladen wird nur ein mit dem Sync-Schlüssel verschlüsselter Block. Der Schlüssel bleibt auf den Geräten, mit dem Code verschlüsselt.
+- Die Geräte schauen etwa alle 5 Sekunden nach Neuem, eigene Änderungen gehen nach rund 1 Sekunde hoch.
 - Ändern zwei Geräte gleichzeitig etwas, werden beide Änderungen zusammengeführt. Gelöschte Blöcke bleiben gelöscht.
 - Das Claude-Seitenfenster gleicht nicht mit ab, weil es keine fremden Server erreichen kann.
 - Einrichtung des Speichers: `docs/sync-setup.sql` im Supabase-SQL-Editor ausführen und in `sync.js` die Project URL und den anon key eintragen (beide öffentlich; den secret/service_role key niemals eintragen).

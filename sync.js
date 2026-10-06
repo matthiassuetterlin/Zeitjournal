@@ -6,7 +6,7 @@
 (() => {
   const SYNC_URL = 'https://yovmtxtinbgypvvwvcnk.supabase.co';   // Project URL des Supabase-Projekts
   const SYNC_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlvdm10eHRpbmJneXB2dnd2Y25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTkwOTMsImV4cCI6MjEwNjg3NTA5M30.cpQ54UX-FKzIUsL9a815SoUNCGrQikFLnuON303soos';  // anon key (öffentlich, Rolle anon)
-  const POLL_MS = 30000, PUSH_DELAY = 2500;
+  const POLL_MS = 5000, FULL_MS = 30000, PUSH_DELAY = 1000;
   const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';   // Crockford-Base32, ohne I, L, O, U
 
   const cfg = window.zeitjournalSyncConfig || { url: SYNC_URL, key: SYNC_ANON };
@@ -41,7 +41,7 @@
       headers: { apikey: cfg.key, ...(cfg.key.startsWith('eyJ') ? { Authorization: `Bearer ${cfg.key}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!r.ok) throw new Error(`${fn}: ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(`${fn}: ${r.status}`), { status: r.status });
     return r.json();
   }
   async function pull(code) {
@@ -142,6 +142,23 @@
     }
   }
   // Nicht bei jedem Speichern neu warten: die laufende Uhr speichert jede Sekunde
+  // Alle paar Sekunden nur die Revision fragen (winzige Antwort); geholt wird erst, wenn sich etwas geändert hat.
+  // Fehlt die Funktion zj_rev auf dem Server (ältere Einrichtung), wird wie früher alle 30 Sekunden ganz abgeglichen.
+  let revMissing = false, lastFull = 0;
+  async function poll() {
+    if (!active() || busy || document.visibilityState === 'hidden') return;
+    if (dirty()) return syncNow();
+    if (revMissing) { if (Date.now() - lastFull >= FULL_MS) { lastFull = Date.now(); syncNow(); } return; }
+    try {
+      const { id } = await keys(state.sync.code);
+      const rev = Number(await rpc('zj_rev', { p_id: id }));
+      if (lastErr) { lastErr = ''; renderSync(); }
+      if (rev !== state.sync.rev) syncNow();
+    } catch (e) {
+      if (e.status === 404) { revMissing = true; syncNow(); }
+      else { lastErr = navigator.onLine === false ? 'offline' : 'Fehler'; renderSync(); }
+    }
+  }
   const schedulePush = () => { if (!pushTimer) pushTimer = setTimeout(() => { pushTimer = null; syncNow(); }, PUSH_DELAY); };
 
   // Speichern und Starten der App mithören
@@ -156,7 +173,7 @@
     renderSync();
     syncNow();
     clearInterval(timer);
-    timer = setInterval(() => { if (document.visibilityState !== 'hidden') syncNow(); }, POLL_MS);
+    timer = setInterval(poll, POLL_MS);
   };
   window.addEventListener('focus', () => syncNow());
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncNow(); });

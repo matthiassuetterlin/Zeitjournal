@@ -46,6 +46,15 @@ begin
 end;
 $$;
 
+-- Nur die Revision: damit fragen die Geräte alle paar Sekunden günstig nach, ob es etwas Neues gibt
+create or replace function public.zj_rev(p_id text)
+returns bigint
+language sql security definer set search_path = public as $$
+  select coalesce((select s.rev from public.zeitjournal_sync s where s.id = p_id), 0);
+$$;
+
+revoke all on function public.zj_rev(text) from public;
+grant execute on function public.zj_rev(text) to anon;
 revoke all on function public.zj_pull(text) from public;
 revoke all on function public.zj_push(text, text, bigint) from public;
 grant execute on function public.zj_pull(text) to anon;
