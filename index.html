@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Zeitjournal</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Gewähltes Design vor dem ersten Zeichnen setzen, damit nichts aufblitzt
+    try { const t = localStorage.getItem('zeitjournal.theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -18,6 +22,7 @@
     <div class="clock">
       <span id="runningInfo" class="running-info"></span>
       <button id="startStop" class="startstop" title="Start/Stopp (Leertaste)">▶ Start</button>
+      <button id="themeToggle" class="theme-toggle" title="Hell/Dunkel umschalten"></button>
     </div>
   </header>
 
@@ -25,15 +30,54 @@
 
   <main>
     <section class="day">
-      <div class="scale" id="scale"></div>
-      <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
-      <p class="hint">Auf der leeren Leiste ziehen = neuer Block · Block ziehen = verschieben · Ränder ziehen = länger/kürzer · Doppelklick = umbenennen · Entf = löschen</p>
+      <div class="day-tools">
+        <button id="undo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+        <button id="redo" title="Wiederholen (Strg+Umschalt+Z)">↷ Wiederholen</button>
+        <span class="spacer"></span>
+        <span class="label">Zoom</span>
+        <button id="zoomOut" title="Herauszoomen (Strg + Mausrad)">−</button>
+        <button id="zoomFit" title="Ganzen Tag auf einmal zeigen">Ganzer Tag</button>
+        <button id="zoomIn" title="Hineinzoomen, damit kurze Blöcke breiter werden (Strg + Mausrad)">+</button>
+        <button class="info" id="infoBtn" aria-describedby="infoTip" aria-label="Wie es funktioniert">i</button>
+        <div class="infotip" id="infoTip" role="tooltip">
+          <ul>
+            <li>Auf der leeren Leiste ziehen: neuer Block (Klick: eine Stunde)</li>
+            <li>Block ziehen: verschieben · Ränder ziehen: länger oder kürzer (der Nachbarblock passt sich an)</li>
+            <li>Doppelklick: benennen · Entf: löschen · Strg+Z: rückgängig</li>
+            <li>Kategorie oder Projekt: oben anklicken oder Tasten 1–5</li>
+            <li>Start: Uhr läuft mit, bis du Stopp drückst (Leertaste)</li>
+            <li>Zoom: + / − oder Strg+Mausrad · Griff unter der Leiste: höher</li>
+          </ul>
+        </div>
+      </div>
+      <div class="track-scroll" id="trackScroll">
+        <div class="track-inner" id="trackInner">
+          <div class="scale" id="scale"></div>
+          <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
+        </div>
+      </div>
+      <div class="resize-y" id="trackResize" role="separator" aria-orientation="horizontal" aria-label="Höhe der Zeitleiste ändern" tabindex="0" title="Ziehen = Zeitleiste höher/niedriger · Doppelklick = zurücksetzen"></div>
+
     </section>
 
-    <section class="week">
-      <h2>Woche <span id="weekLabel"></span></h2>
-      <div id="weekRows"></div>
-    </section>
+    <div class="overview">
+      <section class="month">
+        <div class="month-head">
+          <button id="prevMonth" title="Vorheriger Monat">‹</button>
+          <h2 id="monthLabel"></h2>
+          <button id="nextMonth" title="Nächster Monat">›</button>
+        </div>
+        <div class="month-grid" id="monthGrid"></div>
+        <p class="month-total" id="monthTotal"></p>
+      </section>
+
+      <div class="resize-x" id="monthResize" role="separator" aria-orientation="vertical" aria-label="Breite der Monatsübersicht ändern" tabindex="0" title="Ziehen = Monat breiter/schmaler · Doppelklick = zurücksetzen"></div>
+
+      <section class="week">
+        <h2>Woche <span id="weekLabel"></span></h2>
+        <div id="weekRows"></div>
+      </section>
+    </div>
 
     <section class="summary">
       <h2>Summen</h2>
@@ -61,6 +105,17 @@
   <div id="editor" class="editor" hidden>
     <input id="editorInput" type="text" placeholder="Bezeichnung (optional)">
   </div>
+
+  <div id="confirmDialog" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="confirmText">
+      <p id="confirmText"></p>
+      <div class="dialog-actions">
+        <button id="confirmCancel">Abbrechen</button>
+        <button id="confirmOk" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="app.js"></script>
 </body>
