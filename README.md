@@ -2,7 +2,11 @@
 
 Grafisches Zeitjournal: Zeiten als farbige Blöcke auf einer Tagesleiste erfassen, mit der Maus verschieben, verlängern, kürzen und benennen.
 
-![Screenshot](docs/screenshot.png)
+![Screenshot hell](docs/screenshot.png)
+
+![Screenshot dunkel](docs/screenshot-dunkel.png)
+
+Online: https://matthiassuetterlin.github.io/Zeitjournal/
 
 ## Benutzen
 
@@ -15,6 +19,8 @@ Grafisches Zeitjournal: Zeiten als farbige Blöcke auf einer Tagesleiste erfasse
 | Länger/kürzer | Linken oder rechten Rand ziehen |
 | Umbenennen | Doppelklick oder Enter |
 | Kategorie ändern | Block anklicken, dann Kategorie oder Taste 1–5 |
+| Projekt wählen | Pfeil ▾ neben „Projekte“: Projekt auswählen, neu anlegen (Enter), umbenennen ✎ oder löschen ✕ |
+| Hell/Dunkel | ☾/☀ oben rechts (startet passend zur Systemeinstellung) |
 | Löschen | Block anklicken, Entf |
 | Stoppuhr | Start/Stopp oder Leertaste; Kategorie wechseln, während sie läuft, schließt den Block und beginnt einen neuen |
 | Rückgängig | Strg+Z |

@@ -9,17 +9,25 @@ const CATEGORIES = [
   { id: 'krankheit', name: 'Krankheit', color: '#dc2626' },
 ];
 const catById = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
+// Blautöne für einzelne Projekte, damit sie zur Kategorie „Projekte“ passen
+const PROJECT_COLORS = ['#0ea5e9', '#1e40af', '#0891b2', '#60a5fa', '#0369a1', '#1d4ed8', '#155e75', '#38bdf8'];
 
 // ---------- Zustand & Speicher ----------
 const STORAGE_KEY = 'zeitjournal.v1';
 const DAY_MIN = 24 * 60;
 
 const state = {
-  entries: [],      // { id, date: 'YYYY-MM-DD', start, end (Minuten ab 0:00), cat, title }
+  entries: [],      // { id, date: 'YYYY-MM-DD', start, end (Minuten ab 0:00), cat, project, title }
+  projects: [],     // { id, name, color } – Unterprojekte der Kategorie „Projekte“
   running: null,    // id des laufenden Blocks
   cat: CATEGORIES[0].id,
+  project: null,    // gewähltes Projekt für neue Blöcke
   snap: 15,
 };
+const projById = id => state.projects.find(p => p.id === id) || null;
+// Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
+const entryColor = e => (e.cat === 'projekte' && projById(e.project)?.color) || catById(e.cat).color;
+const entryLabel = e => (e.cat === 'projekte' && projById(e.project)?.name) || catById(e.cat).name;
 let viewDate = toDateStr(new Date());
 let selectedId = null;
 const history = [];
@@ -29,17 +37,18 @@ function load() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (saved && Array.isArray(saved.entries)) Object.assign(state, saved);
   } catch (e) { /* leerer Start */ }
+  if (!Array.isArray(state.projects)) state.projects = [];
 }
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignorieren */ }
 }
 function snapshot() {
-  history.push(JSON.stringify(state.entries));
+  history.push(JSON.stringify({ entries: state.entries, projects: state.projects }));
   if (history.length > 100) history.shift();
 }
 function undo() {
   if (!history.length) return;
-  state.entries = JSON.parse(history.pop());
+  Object.assign(state, JSON.parse(history.pop()));
   if (state.running && !state.entries.some(e => e.id === state.running)) state.running = null;
   save();
   render();
@@ -125,7 +134,7 @@ function renderHeader() {
   if (run) {
     const dur = run.end - run.start;
     const secs = Math.floor((dur * 60) % 60);
-    $('runningInfo').textContent = `${catById(run.cat).name} läuft seit ${fmtTime(run.start)} · ${Math.floor(dur / 60)}:${String(Math.floor(dur % 60)).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    $('runningInfo').textContent = `${entryLabel(run)} läuft seit ${fmtTime(run.start)} · ${Math.floor(dur / 60)}:${String(Math.floor(dur % 60)).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   } else {
     $('runningInfo').textContent = '';
   }
@@ -135,14 +144,106 @@ function renderPalette() {
   const p = $('palette');
   p.innerHTML = '';
   CATEGORIES.forEach((c, i) => {
+    const active = state.cat === c.id;
     const b = document.createElement('button');
-    b.className = 'cat' + (state.cat === c.id ? ' active' : '');
-    b.style.borderColor = state.cat === c.id ? c.color : '';
-    b.innerHTML = `<span class="dot" style="background:${c.color}"></span>${c.name}<kbd>${i + 1}</kbd>`;
+    b.className = 'cat' + (active ? ' active' : '');
+    b.style.borderColor = active ? c.color : '';
+    const proj = c.id === 'projekte' ? projById(state.project) : null;
+    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span>${c.name}<span class="sub"></span><kbd>${i + 1}</kbd>`;
+    if (proj) b.querySelector('.sub').textContent = '· ' + proj.name;
     b.title = 'Kategorie wählen. Ist ein Block markiert, wird er umgefärbt. Läuft die Uhr, wird auf diese Kategorie gewechselt.';
-    b.onclick = () => chooseCategory(c.id);
-    p.appendChild(b);
+    b.onclick = () => chooseCategory(c.id, c.id === 'projekte' ? state.project : undefined);
+    if (c.id !== 'projekte') { p.appendChild(b); return; }
+    // „Projekte“ bekommt ein Aufklappmenü für einzelne Projekte
+    const group = document.createElement('div');
+    group.className = 'cat-group';
+    const more = document.createElement('button');
+    more.className = 'cat-more' + (active ? ' active' : '');
+    more.style.borderColor = active ? c.color : '';
+    more.textContent = projMenuOpen ? '▴' : '▾';
+    more.title = 'Projekt auswählen oder neu anlegen';
+    more.onclick = () => { projMenuOpen = !projMenuOpen; renderPalette(); };
+    group.append(b, more);
+    if (projMenuOpen) group.appendChild(renderProjectMenu());
+    p.appendChild(group);
   });
+}
+
+let projMenuOpen = false;
+let renamingProject = null;
+function renderProjectMenu() {
+  const m = document.createElement('div');
+  m.className = 'projmenu';
+  if (!state.projects.length) m.insertAdjacentHTML('beforeend', '<div class="empty">Noch keine Projekte angelegt.</div>');
+  const none = document.createElement('div');
+  none.className = 'item' + (state.cat === 'projekte' && !state.project ? ' active' : '');
+  none.innerHTML = `<span class="dot" style="background:${catById('projekte').color}"></span><span class="name">Ohne Projekt</span>`;
+  none.onclick = () => { projMenuOpen = false; chooseCategory('projekte', null); };
+  m.appendChild(none);
+  for (const pr of state.projects) {
+    const it = document.createElement('div');
+    it.className = 'item' + (state.cat === 'projekte' && state.project === pr.id ? ' active' : '');
+    it.innerHTML = `<span class="dot" style="background:${pr.color}"></span>`;
+    if (renamingProject === pr.id) {
+      const inp = document.createElement('input');
+      inp.value = pr.name;
+      const done = commit => {
+        if (renamingProject !== pr.id) return;
+        renamingProject = null;
+        const v = inp.value.trim();
+        if (commit && v && v !== pr.name) { snapshot(); pr.name = v; save(); }
+        render();
+      };
+      inp.onkeydown = ev => { ev.stopPropagation(); if (ev.key === 'Enter') done(true); if (ev.key === 'Escape') done(false); };
+      inp.onblur = () => done(true);
+      inp.onclick = ev => ev.stopPropagation();
+      it.appendChild(inp);
+      queueMicrotask(() => { inp.focus(); inp.select(); });
+    } else {
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = pr.name;
+      it.appendChild(name);
+      it.insertAdjacentHTML('beforeend', '<button class="act" data-a="ren" title="Umbenennen">✎</button><button class="act" data-a="del" title="Löschen">✕</button>');
+    }
+    it.onclick = ev => {
+      const a = ev.target.dataset.a;
+      if (a === 'ren') { renamingProject = pr.id; renderPalette(); return; }
+      if (a === 'del') { deleteProject(pr.id); return; }
+      if (renamingProject === pr.id) return;
+      projMenuOpen = false;
+      chooseCategory('projekte', pr.id);
+    };
+    m.appendChild(it);
+  }
+  const row = document.createElement('div');
+  row.className = 'newrow';
+  const inp = document.createElement('input');
+  inp.placeholder = '+ Neues Projekt (Enter)';
+  inp.onkeydown = ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Escape') { projMenuOpen = false; renderPalette(); }
+    if (ev.key !== 'Enter' || !inp.value.trim()) return;
+    snapshot();
+    const pr = { id: uid(), name: inp.value.trim(), color: PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length] };
+    state.projects.push(pr);
+    projMenuOpen = false;
+    chooseCategory('projekte', pr.id);
+  };
+  row.appendChild(inp);
+  m.appendChild(row);
+  return m;
+}
+function deleteProject(id) {
+  const pr = projById(id);
+  const used = state.entries.filter(e => e.project === id).length;
+  if (!confirm(`Projekt „${pr.name}“ löschen?` + (used ? ` ${used} Block/Blöcke bleiben unter „Projekte“ ohne Projektnamen erhalten.` : ''))) return;
+  snapshot();
+  state.projects = state.projects.filter(p => p.id !== id);
+  for (const e of state.entries) if (e.project === id) e.project = null;
+  if (state.project === id) state.project = null;
+  save();
+  render();
 }
 
 function renderTrack() {
@@ -177,11 +278,11 @@ function renderTrack() {
     el.dataset.id = e.id;
     el.style.left = pct(e.start) + '%';
     el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
-    el.style.background = c.color;
-    el.title = `${e.title || c.name}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`;
+    el.style.background = entryColor(e);
+    el.title = `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`;
     el.innerHTML = `<span class="title"></span><span class="meta">${fmtTime(e.start)}–${fmtTime(e.end)} · ${fmtDur(e.end - e.start)}</span>
       <div class="handle l" data-h="l"></div>${e.id === state.running ? '' : '<div class="handle r" data-h="r"></div>'}`;
-    el.querySelector('.title').textContent = e.title || c.name;
+    el.querySelector('.title').textContent = e.title || entryLabel(e);
     track.appendChild(el);
   }
   track._range = { lo, hi };
@@ -210,7 +311,7 @@ function renderWeek() {
       const b = document.createElement('div');
       b.style.left = ((e.start - wlo) / (whi - wlo)) * 100 + '%';
       b.style.width = ((e.end - e.start) / (whi - wlo)) * 100 + '%';
-      b.style.background = catById(e.cat).color;
+      b.style.background = entryColor(e);
       mini.appendChild(b);
     }
     row.innerHTML = `<span class="label">${label}</span>`;
@@ -223,15 +324,29 @@ function renderWeek() {
 
 function sums(dates) {
   const s = Object.fromEntries(CATEGORIES.map(c => [c.id, 0]));
-  for (const e of state.entries) if (dates.includes(e.date)) s[e.cat] = (s[e.cat] || 0) + (e.end - e.start);
-  return s;
+  const proj = {}; // Minuten je Projekt (Schlüssel '' = ohne Projekt)
+  for (const e of state.entries) {
+    if (!dates.includes(e.date)) continue;
+    s[e.cat] = (s[e.cat] || 0) + (e.end - e.start);
+    if (e.cat === 'projekte') { const k = projById(e.project) ? e.project : ''; proj[k] = (proj[k] || 0) + (e.end - e.start); }
+  }
+  return { s, proj };
 }
-function renderSums(el, s) {
+const esc = t => t.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+function renderSums(el, { s, proj }) {
   const total = Object.values(s).reduce((a, b) => a + b, 0);
-  el.innerHTML = CATEGORIES.map(c => `
-    <div class="sumrow"><span>${c.name}</span>
-      <div class="sumbar"><div style="width:${total ? (s[c.id] / total) * 100 : 0}%;background:${c.color}"></div></div>
-      <span class="v">${fmtDur(s[c.id])}</span></div>`).join('') +
+  const row = (cls, name, v, color) => `
+    <div class="sumrow ${cls}"><span>${esc(name)}</span>
+      <div class="sumbar"><div style="width:${total ? (v / total) * 100 : 0}%;background:${color}"></div></div>
+      <span class="v">${fmtDur(v)}</span></div>`;
+  el.innerHTML = CATEGORIES.map(c => {
+    let h = row('', c.name, s[c.id], c.color);
+    if (c.id === 'projekte' && state.projects.length) {
+      for (const pr of state.projects) if (proj[pr.id]) h += row('subrow', pr.name, proj[pr.id], pr.color);
+      if (proj['']) h += row('subrow', 'ohne Projekt', proj[''], c.color);
+    }
+    return h;
+  }).join('') +
     `<div class="sumrow sumtotal"><span>Gesamt</span><span></span><span class="v">${fmtDur(total)}</span></div>`;
 }
 function renderSummary() {
@@ -241,29 +356,36 @@ function renderSummary() {
 }
 
 // ---------- Aktionen ----------
-function chooseCategory(id) {
+// project: bei „Projekte“ das gewählte Projekt (null = ohne), sonst undefined
+function chooseCategory(id, project) {
   state.cat = id;
+  if (id === 'projekte' && project !== undefined) state.project = project;
+  const proj = id === 'projekte' ? state.project : null;
   const sel = state.entries.find(e => e.id === selectedId);
   if (sel) {
     snapshot();
     sel.cat = id;
+    sel.project = proj;
   } else if (state.running) {
     const run = state.entries.find(e => e.id === state.running);
-    if (run && run.cat !== id) { stopTimer(); startTimer(); }
+    if (run && (run.cat !== id || (run.project || null) !== proj)) { stopTimer(); startTimer(); }
   }
   save();
   render();
 }
+const currentProject = () => (state.cat === 'projekte' ? state.project : null);
 
 function startTimer() {
   const today = toDateStr(new Date());
   const n = nowMinutes();
   snapshot();
   // Läuft der Timer direkt im Anschluss an einen Block derselben Kategorie, wird dieser verlängert.
-  const prev = dayEntries(today).find(e => e.cat === state.cat && n - e.end >= 0 && n - e.end < 1);
+  const prev = dayEntries(today).find(e => e.cat === state.cat && (e.project || null) === currentProject() && n - e.end >= 0 && n - e.end < 1);
   let e = prev;
+  // Läuft gerade ein anderer Block über „jetzt“ hinaus, endet er jetzt.
+  for (const o of dayEntries(today)) if (o !== e && o.start < n && o.end > n) o.end = Math.max(o.start, Math.floor(n));
   if (!e) {
-    e = { id: uid(), date: today, start: n, end: n, cat: state.cat, title: '' };
+    e = { id: uid(), date: today, start: n, end: n, cat: state.cat, project: currentProject(), title: '' };
     state.entries.push(e);
   }
   state.running = e.id;
@@ -289,7 +411,7 @@ function tick() {
     if (e.date !== today) {
       // Über Mitternacht: alten Block um 24:00 abschließen und heute weiterlaufen lassen.
       e.end = DAY_MIN;
-      const n = { id: uid(), date: today, start: 0, end: nowMinutes(), cat: e.cat, title: e.title };
+      const n = { id: uid(), date: today, start: 0, end: nowMinutes(), cat: e.cat, project: e.project, title: e.title };
       state.entries.push(n);
       state.running = n.id;
     } else {
@@ -297,7 +419,7 @@ function tick() {
     }
     save();
   }
-  if (!drag) { renderHeader(); renderTrack(); if (e) renderSummary(); }
+  if (!drag) { renderHeader(); renderTrack(); if (e) { renderWeek(); renderSummary(); } }
 }
 
 function deleteSelected() {
@@ -325,6 +447,7 @@ track.addEventListener('pointerdown', ev => {
   ev.stopPropagation(); // sonst hebt der Dokument-Handler die Markierung gleich wieder auf
   if (ev.button !== 0) return;
   closeEditor(true);
+  projMenuOpen = false;
   const blockEl = ev.target.closest('.block');
   const m = minutesAt(ev.clientX);
   if (blockEl) {
@@ -344,7 +467,7 @@ track.addEventListener('pointerdown', ev => {
     if (!g) return;
     snapshot();
     const anchor = clamp(snapTo(m), g.lo, g.hi);
-    const e = { id: uid(), date: viewDate, start: anchor, end: anchor, cat: state.cat, title: '' };
+    const e = { id: uid(), date: viewDate, start: anchor, end: anchor, cat: state.cat, project: currentProject(), title: '' };
     state.entries.push(e);
     selectedId = e.id;
     drag = { mode: 'create', id: e.id, x0: ev.clientX, anchor, gap: g, moved: false };
@@ -464,6 +587,7 @@ document.addEventListener('keydown', ev => {
 
 // Klick ins Leere hebt die Markierung auf
 document.addEventListener('pointerdown', ev => {
+  if (projMenuOpen && !ev.target.closest('.cat-group')) { projMenuOpen = false; renderPalette(); }
   if (!ev.target.closest('.track, .palette, .editor') && selectedId) { selectedId = null; render(); }
 });
 
@@ -496,9 +620,9 @@ function download(name, text, type) {
   URL.revokeObjectURL(a.href);
 }
 $('exportCsv').onclick = () => {
-  const rows = [['Datum', 'Start', 'Ende', 'Dauer (h)', 'Kategorie', 'Bezeichnung']];
+  const rows = [['Datum', 'Start', 'Ende', 'Dauer (h)', 'Kategorie', 'Projekt', 'Bezeichnung']];
   for (const e of [...state.entries].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)) {
-    rows.push([e.date, fmtTime(e.start), fmtTime(e.end), ((e.end - e.start) / 60).toFixed(2).replace('.', ','), catById(e.cat).name, e.title || '']);
+    rows.push([e.date, fmtTime(e.start), fmtTime(e.end), ((e.end - e.start) / 60).toFixed(2).replace('.', ','), catById(e.cat).name, (e.cat === 'projekte' && projById(e.project)?.name) || '', e.title || '']);
   }
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   download('zeitjournal.csv', '﻿' + csv, 'text/csv');
@@ -512,7 +636,7 @@ $('importJson').onchange = async ev => {
     if (!Array.isArray(data.entries)) throw new Error();
     if (!confirm(`${data.entries.length} Einträge laden? Die aktuellen Daten werden ersetzt.`)) return;
     snapshot();
-    Object.assign(state, data);
+    Object.assign(state, { projects: [] }, data);
     save();
     render();
   } catch (e) {
@@ -522,8 +646,26 @@ $('importJson').onchange = async ev => {
   }
 };
 
+// ---------- Hell / Dunkel ----------
+function currentTheme() {
+  return document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+function renderThemeToggle() {
+  const dark = currentTheme() === 'dark';
+  $('themeToggle').textContent = dark ? '☀' : '☾';
+  $('themeToggle').title = dark ? 'Helles Design' : 'Dunkles Design';
+}
+$('themeToggle').onclick = () => {
+  const t = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('zeitjournal.theme', t); } catch (e) { /* ignorieren */ }
+  renderThemeToggle();
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderThemeToggle);
+
 // ---------- Start ----------
 load();
 $('snap').value = String(state.snap);
+renderThemeToggle();
 render();
 setInterval(tick, 1000);
