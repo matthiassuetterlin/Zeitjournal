@@ -541,6 +541,11 @@ track.addEventListener('pointerdown', ev => {
     if (isRunning && !h) { render(); return; } // laufenden Block nicht verschieben
     snapshot();
     drag = { mode: h === 'l' ? 'left' : h === 'r' ? 'right' : 'move', id: e.id, x0: ev.clientX, m0: m, start0: e.start, end0: e.end, moved: false };
+    // Nachbar auf der gezogenen Seite: wird mitverkleinert bzw. folgt, wenn er direkt anliegt
+    const others = dayEntries(viewDate).filter(o => o.id !== e.id && o.id !== state.running);
+    const nb = h === 'l' ? others.filter(o => o.end <= e.start + 0.5).pop()
+             : h === 'r' ? others.find(o => o.start >= e.end - 0.5) : null;
+    if (nb) drag.nb = { id: nb.id, start0: nb.start, end0: nb.end, touching: Math.abs(h === 'l' ? nb.end - e.start : nb.start - e.end) < 0.5 };
   } else {
     const g = gapAt(viewDate, m);
     if (!g) return;
@@ -577,11 +582,16 @@ track.addEventListener('pointermove', ev => {
     }
     if (best !== null) { e.start = best; e.end = best + dur; }
   } else if (drag.mode === 'left') {
-    const g = gapAt(viewDate, drag.start0, e.id);
-    e.start = clamp(snapTo(m), g ? g.lo : 0, e.end - state.snap);
+    const nb = drag.nb && state.entries.find(x => x.id === drag.nb.id);
+    // in den Nachbarn hinein darf man ziehen, bis von ihm noch ein Rasterschritt übrig ist
+    const lo = nb ? drag.nb.start0 + state.snap : (gapAt(viewDate, drag.start0, e.id)?.lo ?? 0);
+    e.start = clamp(snapTo(m), Math.min(lo, e.end - state.snap), e.end - state.snap);
+    if (nb) nb.end = drag.nb.touching ? e.start : Math.min(drag.nb.end0, e.start);
   } else if (drag.mode === 'right') {
-    const g = gapAt(viewDate, drag.end0, e.id);
-    e.end = clamp(snapTo(m), e.start + state.snap, g ? g.hi : DAY_MIN);
+    const nb = drag.nb && state.entries.find(x => x.id === drag.nb.id);
+    const hi = nb ? drag.nb.end0 - state.snap : (gapAt(viewDate, drag.end0, e.id)?.hi ?? DAY_MIN);
+    e.end = clamp(snapTo(m), e.start + state.snap, Math.max(hi, e.start + state.snap));
+    if (nb) nb.start = drag.nb.touching ? e.end : Math.max(drag.nb.start0, e.end);
   }
   renderTrack();
 });

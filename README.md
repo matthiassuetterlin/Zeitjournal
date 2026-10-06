@@ -16,7 +16,7 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | --- | --- |
 | Block anlegen | Auf der leeren Leiste ziehen, oder klicken (1 Stunde) |
 | Verschieben | Block ziehen (springt nicht über andere Blöcke, sondern in die nächste freie Lücke) |
-| Länger/kürzer | Linken oder rechten Rand ziehen |
+| Länger/kürzer | Linken oder rechten Rand ziehen; der Nachbarblock wird dabei automatisch kürzer, liegen zwei Blöcke aneinander, wandert die gemeinsame Grenze |
 | Umbenennen | Doppelklick oder Enter |
 | Kategorie ändern | Block anklicken, dann Kategorie oder Taste 1–5 |
 | Projekt wählen | Pfeil ▾ neben „Projekte“: Projekt auswählen, neu anlegen (Enter), umbenennen ✎ oder löschen ✕ |
