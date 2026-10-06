@@ -33,7 +33,7 @@ let selectedId = null;
 const history = [];   // Zustände vor einer Änderung
 const future = [];    // für Wiederholen zurückgelegte Zustände
 
-// ---------- Speichern: mit dem Passwort verschlüsselt (AES-GCM, Schlüssel per PBKDF2) ----------
+// ---------- Speichern: mit dem Code verschlüsselt (AES-GCM, Schlüssel per PBKDF2) ----------
 const ENC_KEY = 'zeitjournal.v1.enc';  // { salt, iv, data } als Base64
 let cryptoKey = null;                  // gesetzt, sobald entsperrt
 let cryptoSalt = null;
@@ -59,7 +59,7 @@ function loadPlain() {
 async function persist() {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, te.encode(JSON.stringify(state)));
-  localStorage.setItem(ENC_KEY, JSON.stringify({ v: 1, salt: toB64(cryptoSalt), iv: toB64(iv), data: toB64(data) }));
+  localStorage.setItem(ENC_KEY, JSON.stringify({ v: 1, kind: 'pin', salt: toB64(cryptoSalt), iv: toB64(iv), data: toB64(data) }));
 }
 let saving = null, saveAgain = false;
 function save() {
@@ -914,25 +914,60 @@ $('themeToggle').onclick = () => {
 };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderThemeToggle);
 
-// ---------- Anmeldung ----------
-let lockMode = 'unlock'; // 'create' | 'unlock' | 'change'
+// ---------- Anmeldung mit 4-stelligem Code ----------
+const PIN_LEN = 4;
+const WAIT_KEY = 'zeitjournal.pinwait';  // { fails, until } – Wartezeit nach falschen Codes
+let lockMode = 'unlock'; // 'create' | 'confirm' | 'unlock' | 'change' | 'legacy'
+let pin = '', firstPin = '', checking = false, waitTimer = null;
+const LOCK_TEXT = {
+  create: 'Wähle einen 4-stelligen Code. Deine Zeiten werden damit verschlüsselt in diesem Browser gespeichert.',
+  change: 'Neuen 4-stelligen Code wählen.',
+  confirm: 'Code zur Sicherheit wiederholen.',
+  unlock: 'Code eingeben',
+  legacy: 'Bitte einmal das bisherige Passwort eingeben, danach wählst du einen Code.',
+};
+function readWait() {
+  try { return JSON.parse(localStorage.getItem(WAIT_KEY)) || { fails: 0, until: 0 }; } catch (e) { return { fails: 0, until: 0 }; }
+}
+function writeWait(w) { try { localStorage.setItem(WAIT_KEY, JSON.stringify(w)); } catch (e) { /* ignorieren */ } }
+function renderPin() {
+  $('pinDots').querySelectorAll('span').forEach((d, i) => d.classList.toggle('on', i < pin.length));
+}
+// Nach 3 falschen Codes 30 Sekunden warten, danach jeweils doppelt so lange
+function applyWait() {
+  clearTimeout(waitTimer);
+  const left = lockMode === 'unlock' ? Math.ceil((readWait().until - Date.now()) / 1000) : 0;
+  const blocked = left > 0;
+  $('pinpad').querySelectorAll('button[data-d], #pinBack').forEach(b => { b.disabled = blocked || checking; });
+  if (blocked) {
+    $('lockError').textContent = `Zu viele falsche Versuche. Bitte ${left} s warten.`;
+    waitTimer = setTimeout(applyWait, 1000);
+  } else if ($('lockError').textContent.startsWith('Zu viele')) {
+    $('lockError').textContent = '';
+  }
+  return blocked;
+}
 function showLock(mode) {
   lockMode = mode;
-  const create = mode !== 'unlock';
-  $('lockText').textContent = mode === 'create'
-    ? 'Lege ein Passwort fest. Deine Zeiten werden damit verschlüsselt in diesem Browser gespeichert.'
-    : mode === 'change' ? 'Neues Passwort festlegen.' : 'Bitte Passwort eingeben.';
-  $('pw1Label').textContent = create ? 'Neues Passwort' : 'Passwort';
-  $('pw1').autocomplete = create ? 'new-password' : 'current-password';
-  $('pw2Row').hidden = !create;
-  $('pw2').required = create;
-  $('lockBtn').textContent = mode === 'unlock' ? 'Entsperren' : 'Speichern';
-  $('lockCancel').hidden = mode !== 'change';
-  $('lockForgot').hidden = mode !== 'unlock';
+  pin = '';
+  $('lockText').textContent = LOCK_TEXT[mode];
+  $('lockCancel').hidden = mode !== 'change' && !(mode === 'confirm' && cryptoKey);
+  $('lockForgot').hidden = mode !== 'unlock' && mode !== 'legacy';
+  $('legacyForm').hidden = mode !== 'legacy';
+  $('pinDots').hidden = $('pinpad').hidden = mode === 'legacy';
   $('lockError').textContent = '';
-  $('pw1').value = $('pw2').value = '';
   $('lock').hidden = false;
-  $('pw1').focus();
+  renderPin();
+  applyWait();
+  if (mode === 'legacy') $('legacyPw').focus();
+  else if (document.activeElement && !$('lock').contains(document.activeElement)) document.activeElement.blur();
+}
+function pinError(text) {
+  $('lockError').textContent = text;
+  const dots = $('pinDots');
+  dots.classList.remove('shake'); void dots.offsetWidth; dots.classList.add('shake');
+  pin = '';
+  renderPin();
 }
 let started = false;
 function startApp() {
@@ -941,35 +976,76 @@ function startApp() {
   render();
   if (!started) { started = true; setInterval(tick, 1000); }
 }
-$('lockForm').addEventListener('submit', async ev => {
-  ev.preventDefault();
-  const pw = $('pw1').value;
-  const btn = $('lockBtn');
-  $('lockError').textContent = '';
-  if (lockMode !== 'unlock') {
-    if (pw.length < 4) { $('lockError').textContent = 'Bitte mindestens 4 Zeichen.'; return; }
-    if (pw !== $('pw2').value) { $('lockError').textContent = 'Die beiden Passwörter sind nicht gleich.'; return; }
+async function pinComplete() {
+  const code = pin;
+  if (lockMode === 'create' || lockMode === 'change') {
+    firstPin = code;
+    showLock('confirm');
+    return;
   }
-  btn.disabled = true;
+  if (lockMode === 'confirm') {
+    if (code !== firstPin) { const back = cryptoKey ? 'change' : 'create'; showLock(back); pinError('Die Codes waren nicht gleich. Bitte noch einmal.'); return; }
+    checking = true; applyWait();
+    try {
+      const wasChange = !!cryptoKey;
+      if (!wasChange) loadPlain();
+      await setPassword(code);
+      writeWait({ fails: 0, until: 0 });
+      if (wasChange) toast('Code geändert.');
+      startApp();
+    } catch (e) {
+      pinError('Das hat nicht geklappt. Bitte noch einmal.');
+    } finally { checking = false; applyWait(); }
+    return;
+  }
+  // entsperren
+  checking = true; applyWait();
   try {
-    if (lockMode === 'unlock') await unlockWith(pw);
-    else {
-      if (lockMode === 'create') loadPlain();
-      await setPassword(pw);
-      if (lockMode === 'change') toast('Passwort geändert.');
-    }
+    await unlockWith(code);
+    writeWait({ fails: 0, until: 0 });
     startApp();
   } catch (e) {
-    $('lockError').textContent = lockMode === 'unlock' ? 'Das Passwort stimmt nicht.' : 'Das hat nicht geklappt. Bitte noch einmal versuchen.';
-    $('pw1').select();
-  } finally {
-    btn.disabled = false;
+    const w = readWait();
+    w.fails++;
+    if (w.fails >= 3) w.until = Date.now() + 30000 * 2 ** (w.fails - 3);
+    writeWait(w);
+    pinError('Falscher Code.');
+  } finally { checking = false; applyWait(); }
+}
+function pressDigit(d) {
+  if ($('lock').hidden || lockMode === 'legacy' || checking || applyWait() || pin.length >= PIN_LEN) return;
+  pin += d;
+  if ($('lockError').textContent && pin.length === 1) $('lockError').textContent = '';
+  renderPin();
+  if (pin.length === PIN_LEN) setTimeout(pinComplete, 120); // letzten Punkt kurz zeigen
+}
+$('pinpad').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-d]');
+  if (b) pressDigit(b.dataset.d);
+});
+$('pinBack').onclick = () => { if (!checking) { pin = pin.slice(0, -1); renderPin(); } };
+document.addEventListener('keydown', ev => {
+  if ($('lock').hidden || lockMode === 'legacy') return;
+  if (/^[0-9]$/.test(ev.key)) { ev.preventDefault(); pressDigit(ev.key); }
+  else if (ev.key === 'Backspace') { ev.preventDefault(); $('pinBack').click(); }
+  else if (ev.key === 'Escape' && !$('lockCancel').hidden) $('lockCancel').click();
+});
+// Ältere Version mit Textpasswort: einmal entsperren, dann Code festlegen
+$('legacyForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  try {
+    await unlockWith($('legacyPw').value);
+    $('legacyPw').value = '';
+    showLock('change');
+    $('lockText').textContent = 'Entsperrt. Wähle jetzt einen 4-stelligen Code.';
+  } catch (e) {
+    $('lockError').textContent = 'Das Passwort stimmt nicht.';
   }
 });
-$('lockCancel').onclick = () => { $('lock').hidden = true; };
+$('lockCancel').onclick = () => { if (started) $('lock').hidden = true; else startApp(); };
 $('lockForgot').onclick = async () => {
-  if (!await askConfirm('Ohne Passwort lassen sich die gespeicherten Zeiten nicht entschlüsseln. Alle Daten in diesem Browser löschen und mit einem neuen Passwort neu beginnen?', 'Alles löschen')) return;
-  try { localStorage.removeItem(ENC_KEY); localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignorieren */ }
+  if (!await askConfirm('Ohne Code lassen sich die gespeicherten Zeiten nicht entschlüsseln. Alle Daten in diesem Browser löschen und mit einem neuen Code neu beginnen?', 'Alles löschen')) return;
+  try { [ENC_KEY, STORAGE_KEY, WAIT_KEY].forEach(k => localStorage.removeItem(k)); } catch (e) { /* ignorieren */ }
   showLock('create');
 };
 $('lockNow').onclick = async () => {
@@ -982,7 +1058,8 @@ $('changePw').onclick = () => showLock('change');
 renderThemeToggle();
 if (!window.crypto?.subtle) {
   $('lockText').textContent = 'Dieser Browser unterstützt keine Verschlüsselung. Bitte die Seite über https öffnen.';
-  $('lockForm').querySelectorAll('input, button').forEach(el => { el.disabled = true; });
+  $('pinpad').querySelectorAll('button').forEach(el => { el.disabled = true; });
 } else {
-  showLock(readEncrypted() ? 'unlock' : 'create');
+  const rec = readEncrypted();
+  showLock(!rec ? 'create' : rec.kind === 'pin' ? 'unlock' : 'legacy');
 }

@@ -101,26 +101,28 @@
     <button id="exportCsv">CSV exportieren</button>
     <button id="exportJson">Sicherung speichern</button>
     <label class="filebtn">Sicherung laden<input type="file" id="importJson" accept="application/json"></label>
-    <button id="changePw">Passwort ändern</button>
+    <button id="changePw">Code ändern</button>
   </footer>
 
   <div id="lock" class="lock">
-    <form id="lockForm" class="lock-card" autocomplete="on">
+    <div class="lock-card">
       <h1>Zeitjournal</h1>
       <p id="lockText"></p>
-      <label for="pw1" id="pw1Label">Passwort</label>
-      <input type="password" id="pw1" autocomplete="current-password" required>
-      <div id="pw2Row" hidden>
-        <label for="pw2">Passwort wiederholen</label>
-        <input type="password" id="pw2" autocomplete="new-password">
-      </div>
+      <div class="pin-dots" id="pinDots" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
       <p id="lockError" class="lock-error" role="alert"></p>
-      <div class="lock-actions">
-        <button type="button" id="lockCancel" hidden>Abbrechen</button>
-        <button type="submit" id="lockBtn" class="primary">Entsperren</button>
+      <div class="pinpad" id="pinpad" role="group" aria-label="Zifferntastatur">
+        <button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button>
+        <button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button>
+        <button type="button" data-d="7">7</button><button type="button" data-d="8">8</button><button type="button" data-d="9">9</button>
+        <button type="button" id="lockCancel" class="pin-text" hidden>Abbrechen</button><button type="button" data-d="0" class="pin-zero">0</button><button type="button" id="pinBack" class="pin-text" aria-label="Letzte Ziffer löschen">⌫</button>
       </div>
-      <button type="button" id="lockForgot" class="linklike">Passwort vergessen?</button>
-    </form>
+      <form id="legacyForm" class="legacy" hidden>
+        <label for="legacyPw">Bisheriges Passwort</label>
+        <input type="password" id="legacyPw" autocomplete="current-password">
+        <button type="submit" class="primary">Entsperren</button>
+      </form>
+      <button type="button" id="lockForgot" class="linklike">Code vergessen?</button>
+    </div>
   </div>
 
   <div id="editor" class="editor" hidden>

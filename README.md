@@ -30,7 +30,8 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | Tage wechseln | ← / → / T, oder in der Monats- oder Wochenübersicht auf einen Tag klicken |
 | Monatsübersicht | Jeder Tag zeigt Stunden und einen Farbstreifen, was gearbeitet wurde; ‹ › blättert die Monate |
 
-## Passwortschutz
+## Code-Sperre
 
-Die Zeiten werden mit dem Passwort verschlüsselt (AES-GCM, Schlüssel per PBKDF2) im Browser gespeichert und nie an einen Server geschickt. Wer die Seite öffnet, sieht ohne Passwort nur die Anmeldung, und auch direkt aus dem Browser-Speicher lassen sich die Daten ohne Passwort nicht lesen. Der Programmcode selbst bleibt öffentlich, er enthält aber keine Daten. Ohne Passwort sind die Daten verloren; „Passwort vergessen?“ löscht sie und beginnt neu. Eine gespeicherte Sicherung (JSON) ist nicht verschlüsselt.
+Beim Öffnen fragt das Zeitjournal nach einem 4-stelligen Code, eingegeben über ein Ziffernfeld wie beim Telefon (Maus, Finger oder Zifferntasten). Die Zeiten werden mit dem Code verschlüsselt (AES-GCM, Schlüssel per PBKDF2) im Browser gespeichert und nie an einen Server geschickt. Nach drei falschen Codes muss man 30 Sekunden warten, danach jeweils doppelt so lange.
 
+Ein 4-stelliger Code schützt vor neugierigen Blicken, aber nicht vor jemandem, der den Rechner in die Hand bekommt und gezielt alle 10.000 Codes durchprobiert. Ohne Code sind die Daten verloren; „Code vergessen?“ löscht sie und beginnt neu. Eine gespeicherte Sicherung (JSON) ist nicht verschlüsselt.

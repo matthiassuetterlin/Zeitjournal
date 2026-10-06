@@ -386,21 +386,27 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .lock-card h1 { margin: 0; font-size: 22px; }
 .lock-card p { margin: 0 0 6px; color: var(--muted); font-size: 14px; line-height: 1.45; }
 .lock-card label { font-size: 13px; font-weight: 600; margin-top: 4px; }
-.lock-card input {
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--track);
-  color: var(--text);
-  width: 100%;
-}
-.lock-card input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-#pw2Row { display: flex; flex-direction: column; gap: 8px; }
-#pw2Row[hidden] { display: none; }
-.lock-error { color: var(--danger) !important; min-height: 1.2em; margin: 2px 0 0 !important; }
-.lock-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.linklike { border: 0; background: none; padding: 4px 0; color: var(--muted); font-size: 12px; align-self: flex-start; text-decoration: underline; }
+.lock-card { align-items: center; text-align: center; max-width: 320px; }
+.lock-card p { margin: 0; }
+.pin-dots { display: flex; gap: 16px; margin: 14px 0 4px; }
+.pin-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--text); }
+.pin-dots span.on { background: var(--text); }
+.pin-dots.shake { animation: shake .35s; }
+@keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+.pinpad { display: grid; grid-template-columns: repeat(3, 72px); gap: 14px 22px; margin: 4px 0 8px; }
+.pinpad button { width: 72px; height: 72px; border-radius: 50%; font-size: 28px; font-weight: 500; background: var(--track); border: 1px solid var(--line); color: var(--text); padding: 0; }
+.pinpad button:hover:not(:disabled) { background: var(--hover); }
+.pinpad button:active:not(:disabled) { background: var(--line-strong); }
+.pinpad button:disabled { opacity: .4; cursor: default; }
+.pinpad .pin-zero { grid-column: 2; grid-row: 4; }
+.pinpad .pin-text { background: none; border: 0; font-size: 15px; }
+.pinpad #lockCancel { grid-column: 1; grid-row: 4; }
+.pinpad #pinBack { grid-column: 3; grid-row: 4; font-size: 24px; }
+.legacy { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; }
+.legacy[hidden] { display: none; }
+.legacy input { font: inherit; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--track); color: var(--text); width: 100%; }
+.lock-error { color: var(--danger) !important; min-height: 1.3em; font-size: 13px !important; }
+.linklike { border: 0; background: none; padding: 4px 0; color: var(--muted); font-size: 12px; align-self: center; text-decoration: underline; }
 .dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 20px; max-width: 420px; width: 100%; }
 .dialog p { margin: 0 0 16px; line-height: 1.45; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
