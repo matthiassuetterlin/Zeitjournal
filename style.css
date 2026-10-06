@@ -167,6 +167,39 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 
 .hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
 
+/* Monat links, Woche rechts; schmal untereinander */
+.overview { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.month-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.month-head h2 { margin: 0; flex: 1; text-align: center; text-transform: capitalize; }
+.month-head button { padding: 2px 10px; }
+.month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.month-grid .wd { font-size: 11px; color: var(--muted); text-align: center; padding-bottom: 2px; }
+.mday {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: stretch;
+  padding: 4px 5px 5px;
+  min-height: 46px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--track);
+  text-align: left;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mday:hover { border-color: var(--line-strong); }
+.mday .num { font-weight: 600; line-height: 1; }
+.mday .hrs { font-size: 10px; color: var(--muted); line-height: 1; min-height: 10px; }
+.mday .mbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: auto; }
+.mday .mbar.empty { background: var(--line-soft); }
+.mday.weekend { background: var(--panel); }
+.mday.weekend .num { color: var(--muted); }
+.mday.other { opacity: .4; }
+.mday.today .num { color: var(--accent); }
+.mday.current { border: 2px solid var(--text); padding: 3px 4px 4px; }
+.month-total { margin: 10px 0 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 .weekrow {
   display: grid;
   grid-template-columns: 90px 1fr 60px;
@@ -276,6 +309,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: var(--panel); padding: 10px 16px; border-radius: 8px; box-shadow: var(--shadow); z-index: 60; font-size: 14px; max-width: calc(100% - 32px); }
 button:focus-visible, .filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+@media (max-width: 860px) {
+  .overview { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 700px) {
   .summary-grid { grid-template-columns: 1fr; }
   .topbar, .palette, main, .footer { padding-left: 16px; padding-right: 16px; }

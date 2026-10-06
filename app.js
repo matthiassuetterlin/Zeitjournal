@@ -117,9 +117,12 @@ const $ = id => document.getElementById(id);
 const track = $('track');
 
 function render() {
+  // Die Monatsansicht folgt dem gewählten Tag, bis man selbst blättert
+  if (viewDate !== lastViewDate) { monthView = viewDate.slice(0, 7); lastViewDate = viewDate; }
   renderHeader();
   renderPalette();
   renderTrack();
+  renderMonth();
   renderWeek();
   renderSummary();
 }
@@ -322,6 +325,51 @@ function renderWeek() {
   }
 }
 
+// ---------- Monatsübersicht ----------
+let monthView = null;      // 'YYYY-MM'
+let lastViewDate = null;
+function shiftMonth(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return toDateStr(d).slice(0, 7);
+}
+function renderMonth() {
+  const [y, m] = monthView.split('-').map(Number);
+  $('monthLabel').textContent = new Date(y, m - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const grid = $('monthGrid');
+  grid.innerHTML = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(d => `<span class="wd">${d}</span>`).join('');
+  const first = `${monthView}-01`;
+  const start = mondayOf(first);
+  const today = toDateStr(new Date());
+  let monthTotal = 0;
+  for (let i = 0; i < 42; i++) {
+    const date = addDays(start, i);
+    if (i >= 35 && date.slice(0, 7) !== monthView) break; // keine leere sechste Zeile
+    const inMonth = date.slice(0, 7) === monthView;
+    const dow = i % 7;
+    // Minuten je Farbe, damit Projekte und Kategorien als Streifen erkennbar sind
+    const parts = new Map();
+    let total = 0;
+    for (const e of dayEntries(date)) {
+      const c = entryColor(e);
+      parts.set(c, (parts.get(c) || 0) + (e.end - e.start));
+      total += e.end - e.start;
+    }
+    if (inMonth) monthTotal += total;
+    const cell = document.createElement('button');
+    cell.className = 'mday' + (inMonth ? '' : ' other') + (dow >= 5 ? ' weekend' : '') +
+      (date === viewDate ? ' current' : '') + (date === today ? ' today' : '');
+    cell.title = parseDate(date).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) + (total ? ` · ${fmtDur(total)}` : '');
+    const bar = total ? `<span class="mbar">${[...parts].map(([c, v]) => `<span style="flex:${v};background:${c}"></span>`).join('')}</span>` : '<span class="mbar empty"></span>';
+    cell.innerHTML = `<span class="num">${Number(date.slice(8))}</span><span class="hrs">${total ? fmtDur(total).replace(' h', '') : ''}</span>${bar}`;
+    cell.onclick = () => { viewDate = date; selectedId = null; render(); };
+    grid.appendChild(cell);
+  }
+  $('monthTotal').textContent = monthTotal ? `Summe im Monat: ${fmtDur(monthTotal)}` : 'In diesem Monat ist noch nichts erfasst.';
+}
+$('prevMonth').onclick = () => { monthView = shiftMonth(monthView, -1); renderMonth(); };
+$('nextMonth').onclick = () => { monthView = shiftMonth(monthView, 1); renderMonth(); };
+
 function sums(dates) {
   const s = Object.fromEntries(CATEGORIES.map(c => [c.id, 0]));
   const proj = {}; // Minuten je Projekt (Schlüssel '' = ohne Projekt)
@@ -419,7 +467,7 @@ function tick() {
     }
     save();
   }
-  if (!drag) { renderHeader(); renderTrack(); if (e) { renderWeek(); renderSummary(); } }
+  if (!drag) { renderHeader(); renderTrack(); if (e) { renderMonth(); renderWeek(); renderSummary(); } }
 }
 
 function deleteSelected() {

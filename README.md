@@ -24,4 +24,5 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | Löschen | Block anklicken, Entf |
 | Stoppuhr | Start/Stopp oder Leertaste; Kategorie wechseln, während sie läuft, schließt den Block und beginnt einen neuen |
 | Rückgängig | Strg+Z |
-| Tage wechseln | ← / → / T, oder in der Wochenübersicht auf einen Tag klicken |
+| Tage wechseln | ← / → / T, oder in der Monats- oder Wochenübersicht auf einen Tag klicken |
+| Monatsübersicht | Jeder Tag zeigt Stunden und einen Farbstreifen, was gearbeitet wurde; ‹ › blättert die Monate |

@@ -35,10 +35,22 @@
       <p class="hint">Auf der leeren Leiste ziehen = neuer Block · Block ziehen = verschieben · Ränder ziehen = länger/kürzer · Doppelklick = umbenennen · Entf = löschen</p>
     </section>
 
-    <section class="week">
-      <h2>Woche <span id="weekLabel"></span></h2>
-      <div id="weekRows"></div>
-    </section>
+    <div class="overview">
+      <section class="month">
+        <div class="month-head">
+          <button id="prevMonth" title="Vorheriger Monat">‹</button>
+          <h2 id="monthLabel"></h2>
+          <button id="nextMonth" title="Nächster Monat">›</button>
+        </div>
+        <div class="month-grid" id="monthGrid"></div>
+        <p class="month-total" id="monthTotal"></p>
+      </section>
+
+      <section class="week">
+        <h2>Woche <span id="weekLabel"></span></h2>
+        <div id="weekRows"></div>
+      </section>
+    </div>
 
     <section class="summary">
       <h2>Summen</h2>
