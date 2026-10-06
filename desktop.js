@@ -1,161 +1,222 @@
 'use strict';
-// Kachel-Ansicht für die Windows-Desktop-Version (Electron).
+// Desktop-Ansicht für die Windows-Version (Electron): eine App aus Modulen mit durchsichtigen Zwischenräumen.
+// Die Module hängen zusammen: Zieht man einen Zwischenraum, wird das eine Modul größer und das andere kleiner.
+// Anordnung einspaltig (hochkant) oder als eine Zeile (querformatig).
 // Im Browser tut diese Datei nichts: nur die Desktop-Hülle stellt window.zeitjournalDesktop bereit.
 (() => {
   const host = window.zeitjournalDesktop;
   if (!host) return;
-  const TILES_KEY = 'zeitjournal.tiles';
-  const GAP = 12, GRID = 8;
+  const BOARD_KEY = 'zeitjournal.board';
+  const MIN = { col: 70, row: 180 };     // kleinste Modulgröße entlang der Anordnung
   const DEFS = [
-    { id: 'uhr', name: 'Uhr', el: () => document.querySelector('.topbar'), col: 'a' },
-    { id: 'kategorien', name: 'Kategorien', el: () => $('palette'), col: 'a' },
-    { id: 'monat', name: 'Monat', el: () => document.querySelector('.month'), col: 'b' },
-    { id: 'summen', name: 'Summen', el: () => document.querySelector('.summary'), col: 'a' },
-    { id: 'woche', name: 'Woche', el: () => document.querySelector('.week'), col: 'b' },
-    { id: 'tag', name: 'Tag', el: () => document.querySelector('.day'), col: 'bottom' },
-    { id: 'extras', name: 'Extras', el: () => document.querySelector('.footer'), col: 'a', hidden: true },
+    { id: 'uhr', name: 'Uhr', el: () => document.querySelector('.topbar'), w: 380 },
+    { id: 'kategorien', name: 'Kategorien', el: () => $('palette'), w: 330 },
+    { id: 'tag', name: 'Tag', el: () => document.querySelector('.day'), w: 760 },
+    { id: 'summen', name: 'Summen', el: () => document.querySelector('.summary'), w: 480 },
+    { id: 'woche', name: 'Woche', el: () => document.querySelector('.week'), w: 360 },
+    { id: 'monat', name: 'Monat', el: () => document.querySelector('.month'), w: 360 },
+    { id: 'extras', name: 'Extras', el: () => document.querySelector('.footer'), w: 330, hidden: true },
   ];
+  const byId = Object.fromEntries(DEFS.map(d => [d.id, d]));
 
   document.documentElement.classList.add('desktop');
-  const root = document.createElement('div');
-  root.id = 'tiles';
-  document.body.prepend(root);
 
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(TILES_KEY)) || {}; } catch (e) { /* Standard */ }
+  // ---------- Gerüst ----------
+  const board = document.createElement('div');
+  board.id = 'board';
+  board.innerHTML = `
+    <div class="board-bar" title="Ziehen = ganze App verschieben">
+      <span class="board-title">Zeitjournal</span>
+      <span class="board-modes">
+        <button data-mode="col" title="Einspaltig (hochkant)">▯ Spalte</button>
+        <button data-mode="row" title="Eine Zeile (querformatig)">▭ Zeile</button>
+      </span>
+    </div>
+    <div class="board-mods"></div>
+    <div class="board-edge start" title="Ziehen = breiter oder schmaler"></div><div class="board-edge end" title="Ziehen = breiter oder schmaler"></div>`;
+  document.body.prepend(board);
+  const mods = board.querySelector('.board-mods');
+  // Ausgeblendete Module bleiben im Dokument (die App greift auf ihre Elemente zu), nur unsichtbar
+  const stash = document.createElement('div');
+  stash.hidden = true;
+  board.append(stash);
+
   const tiles = {};
-  let zTop = 1;
-
   for (const d of DEFS) {
     const t = document.createElement('div');
     t.className = 'tile';
     t.dataset.tile = d.id;
-    const bar = document.createElement('div');
-    bar.className = 'tile-bar';
-    bar.title = 'Ziehen zum Verschieben';
-    bar.innerHTML = `<span>${d.name}</span>`;
-    const close = document.createElement('button');
-    close.className = 'tile-close';
-    close.textContent = '×';
-    close.title = 'Kachel ausblenden (über das Symbol in der Taskleiste wieder einblenden)';
-    close.onclick = () => setHidden(d.id, true);
-    bar.append(close);
-    const body = document.createElement('div');
-    body.className = 'tile-body';
-    body.append(d.el());
-    const grip = document.createElement('div');
-    grip.className = 'tile-grip';
-    grip.title = 'Ziehen = Kachel breiter oder schmaler';
-    grip.addEventListener('pointerdown', ev => startDrag(ev, t, 'width'));
-    t.append(bar, body, grip);
-    root.append(t);
+    t.innerHTML = `<div class="tile-bar" title="Ziehen = Modul an eine andere Stelle schieben"><span>${d.name}</span>`
+      + '<button class="tile-close" title="Modul ausblenden (über das Symbol in der Taskleiste wieder einblenden)">×</button></div>'
+      + '<div class="tile-body"></div>';
+    t.querySelector('.tile-body').append(d.el());
+    t.querySelector('.tile-close').onclick = () => setHidden(d.id, true);
+    t.querySelector('.tile-bar').addEventListener('pointerdown', ev => startReorder(ev, d.id));
     tiles[d.id] = t;
-    bar.addEventListener('pointerdown', ev => startDrag(ev, t));
-    t.addEventListener('pointerdown', () => { t.style.zIndex = ++zTop; });
   }
-  // Monat und Woche liegen jetzt in eigenen Kacheln, die alte Übersicht samt Trenngriff wird nicht mehr gebraucht
+  // Monat und Woche liegen jetzt in eigenen Modulen, die alte Übersicht samt Trenngriff wird nicht mehr gebraucht
   document.querySelector('.overview')?.remove();
   document.querySelector('main')?.remove();
 
+  // ---------- Gespeicherte Anordnung ----------
+  const fresh = () => ({
+    mode: 'col',
+    order: DEFS.map(d => d.id),
+    hidden: Object.fromEntries(DEFS.map(d => [d.id, !!d.hidden])),
+    size: { col: {}, row: {} },     // Größe je Modul entlang der Anordnung (Spalte: Höhe, Zeile: Breite)
+    cross: { col: 480, row: 330 },  // Breite der Spalte bzw. Höhe der Zeile
+    pos: { col: null, row: null },
+  });
+  let L = fresh();
+  try {
+    const s = JSON.parse(localStorage.getItem(BOARD_KEY));
+    if (s && s.order) {
+      L = Object.assign(fresh(), s);
+      for (const d of DEFS) if (!L.order.includes(d.id)) L.order.push(d.id);
+    }
+  } catch (e) { /* Standard */ }
   function store() {
-    const out = {};
-    for (const [id, t] of Object.entries(tiles)) {
-      out[id] = { x: parseFloat(t.style.left) || 0, y: parseFloat(t.style.top) || 0, w: parseFloat(t.style.width) || t.offsetWidth, hidden: t.hidden };
-    }
-    try { localStorage.setItem(TILES_KEY, JSON.stringify(out)); } catch (e) { /* ignorieren */ }
-    report();
-  }
-  function report() {
-    host.reportTiles(DEFS.map(d => ({ id: d.id, name: d.name, visible: !tiles[d.id].hidden })));
-  }
-  function place(t, x, y) {
-    const maxX = Math.max(0, innerWidth - t.offsetWidth), maxY = Math.max(0, innerHeight - 40);
-    t.style.left = Math.min(maxX, Math.max(0, Math.round(x / GRID) * GRID)) + 'px';
-    t.style.top = Math.min(maxY, Math.max(0, Math.round(y / GRID) * GRID)) + 'px';
-  }
-  // Standardanordnung: zwei Spalten am rechten Bildschirmrand, der Tag breit darunter
-  function defaultLayout() {
-    const W = innerWidth, H = innerHeight;
-    const wa = 470, wb = 380;
-    const xa = W - wa - 24, xb = xa - wb - GAP;
-    const ys = { a: 24, b: 24 };
-    for (const d of DEFS) {
-      const t = tiles[d.id];
-      t.hidden = !!d.hidden;
-      if (d.col === 'bottom') continue;
-      t.style.width = (d.col === 'a' ? wa : wb) + 'px';
-      if (t.hidden) { place(t, d.col === 'a' ? xa : xb, ys[d.col]); continue; }
-      place(t, d.col === 'a' ? xa : xb, ys[d.col]);
-      ys[d.col] += t.offsetHeight + GAP;
-    }
-    const day = tiles.tag;
-    day.style.width = (wa + wb + GAP) + 'px';
-    place(day, xb, Math.min(H - day.offsetHeight - 8, Math.max(ys.a, ys.b, H - day.offsetHeight - 24)));
-    window.dispatchEvent(new Event('resize'));
-    store();
-  }
-  function applySaved() {
-    for (const d of DEFS) {
-      const s = saved[d.id], t = tiles[d.id];
-      if (!s) return false;
-      t.hidden = !!s.hidden;
-      t.style.width = s.w + 'px';
-      place(t, s.x, s.y);
-    }
-    window.dispatchEvent(new Event('resize'));
-    report();
-    return true;
-  }
-  function setHidden(id, hidden) {
-    tiles[id].hidden = hidden;
-    if (!hidden) { tiles[id].style.zIndex = ++zTop; place(tiles[id], parseFloat(tiles[id].style.left) || 0, parseFloat(tiles[id].style.top) || 0); }
-    window.dispatchEvent(new Event('resize'));
-    store();
+    try { localStorage.setItem(BOARD_KEY, JSON.stringify(L)); } catch (e) { /* ignorieren */ }
+    host.reportTiles({ mode: L.mode, tiles: DEFS.map(d => ({ id: d.id, name: d.name, visible: !L.hidden[d.id] })) });
   }
 
-  // Verschieben an der Titelleiste, Breite am rechten Rand
+  // ---------- Anordnen ----------
+  const visible = () => L.order.filter(id => !L.hidden[id]);
+  function defaultPos(mode) {
+    return mode === 'col'
+      ? { x: innerWidth - L.cross.col - 24, y: 16 }
+      : { x: 16, y: innerHeight - L.cross.row - 40 };
+  }
+  function layout() {
+    const m = L.mode;
+    board.dataset.mode = m;
+    board.querySelectorAll('.board-modes button').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+    mods.textContent = '';
+    for (const id of L.order) if (L.hidden[id]) stash.append(tiles[id]);
+    visible().forEach((id, i) => {
+      if (i) {
+        const g = document.createElement('div');
+        g.className = 'gutter';
+        g.title = 'Ziehen = Nachbarmodule größer oder kleiner';
+        g.addEventListener('pointerdown', ev => startGutter(ev, i));
+        mods.append(g);
+      }
+      const t = tiles[id], s = L.size[m][id];
+      t.style.width = t.style.height = '';
+      if (m === 'col') t.style.height = s ? s + 'px' : '';
+      else t.style.width = (s || byId[id].w) + 'px';
+      t.classList.toggle('sized', m === 'row' || !!s);
+      mods.append(t);
+    });
+    if (m === 'col') { board.style.width = L.cross.col + 'px'; board.style.height = ''; }
+    else { board.style.height = L.cross.row + 'px'; board.style.width = ''; }
+    const p = L.pos[m] || defaultPos(m);
+    place(p.x, p.y);
+    window.dispatchEvent(new Event('resize'));   // Zeitleiste an die neue Breite anpassen
+    store();
+  }
+  function place(x, y) {
+    x = Math.round(Math.min(Math.max(0, x), Math.max(0, innerWidth - 120)));
+    y = Math.round(Math.min(Math.max(0, y), Math.max(0, innerHeight - 40)));
+    board.style.left = x + 'px';
+    board.style.top = y + 'px';
+    // Passt nicht alles auf den Bildschirm, lassen sich die Module innerhalb der App rollen
+    board.style.maxWidth = (innerWidth - x - 8) + 'px';
+    board.style.maxHeight = (innerHeight - y - 8) + 'px';
+    L.pos[L.mode] = { x, y };
+  }
+  function setHidden(id, hidden) { L.hidden[id] = hidden; layout(); }
+  function setMode(mode) { L.mode = mode; layout(); }
+  board.querySelectorAll('.board-modes button').forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
+
+  // ---------- Ziehen ----------
   let drag = null;
-  function startDrag(ev, t, mode = 'move') {
-    if (ev.button !== 0 || ev.target.closest('button')) return;
+  const mainPos = ev => (L.mode === 'col' ? ev.clientY : ev.clientX);
+  const mainSize = el => (L.mode === 'col' ? el.offsetHeight : el.offsetWidth);
+  function begin(ev, d) {
+    if (ev.button !== 0 || ev.target.closest('button')) return false;
     ev.preventDefault();
-    t.style.zIndex = ++zTop;
-    drag = { t, mode, dx: ev.clientX - t.offsetLeft, dy: ev.clientY - t.offsetTop, w: t.offsetWidth, x0: ev.clientX };
-    t.classList.add('dragging');
+    drag = d;
     host.setInteractive(true);
+    document.documentElement.classList.add('board-dragging');
+    return true;
+  }
+  // Ganze App verschieben
+  board.querySelector('.board-bar').addEventListener('pointerdown', ev => {
+    begin(ev, { kind: 'move', dx: ev.clientX - board.offsetLeft, dy: ev.clientY - board.offsetTop });
+  });
+  // Zwischenraum ziehen: das Modul davor wächst, das danach schrumpft (oder umgekehrt)
+  function startGutter(ev, i) {
+    const ids = visible(), a = ids[i - 1], b = ids[i];
+    begin(ev, { kind: 'gutter', a, b, p0: mainPos(ev), sa: mainSize(tiles[a]), sb: mainSize(tiles[b]) });
+  }
+  // Rand der App: Spalte breiter / Zeile höher
+  board.querySelectorAll('.board-edge').forEach(e => e.addEventListener('pointerdown', ev => {
+    begin(ev, { kind: 'edge', start: e.classList.contains('start'), p0: L.mode === 'col' ? ev.clientX : ev.clientY,
+      c0: L.cross[L.mode], x0: board.offsetLeft, y0: board.offsetTop });
+  }));
+  // Modul an der Titelleiste an eine andere Stelle ziehen
+  function startReorder(ev, id) {
+    if (begin(ev, { kind: 'reorder', id })) tiles[id].classList.add('dragging');
   }
   window.addEventListener('pointermove', ev => {
     if (!drag) return;
-    if (drag.mode === 'width') {
-      const w = Math.round((drag.w + ev.clientX - drag.x0) / GRID) * GRID;
-      drag.t.style.width = Math.max(220, Math.min(innerWidth - drag.t.offsetLeft, w)) + 'px';
-    } else place(drag.t, ev.clientX - drag.dx, ev.clientY - drag.dy);
+    const m = L.mode;
+    if (drag.kind === 'move') {
+      place(ev.clientX - drag.dx, ev.clientY - drag.dy);
+    } else if (drag.kind === 'gutter') {
+      const total = drag.sa + drag.sb;
+      const sa = Math.max(MIN[m], Math.min(total - MIN[m], drag.sa + mainPos(ev) - drag.p0));
+      L.size[m][drag.a] = Math.round(sa);
+      L.size[m][drag.b] = Math.round(total - sa);
+      for (const id of [drag.a, drag.b]) {
+        tiles[id].style[m === 'col' ? 'height' : 'width'] = L.size[m][id] + 'px';
+        tiles[id].classList.add('sized');
+      }
+    } else if (drag.kind === 'edge') {
+      const p = m === 'col' ? ev.clientX : ev.clientY;
+      const d = (p - drag.p0) * (drag.start ? -1 : 1);
+      const c = Math.round(Math.max(m === 'col' ? 300 : 160, drag.c0 + d));
+      L.cross[m] = c;
+      board.style[m === 'col' ? 'width' : 'height'] = c + 'px';
+      if (drag.start) place(m === 'col' ? drag.x0 - (c - drag.c0) : drag.x0, m === 'col' ? drag.y0 : drag.y0 - (c - drag.c0));
+    } else if (drag.kind === 'reorder') {
+      // Einfügestelle: vor dem ersten Modul, dessen Mitte hinter dem Mauszeiger liegt
+      const ids = visible().filter(id => id !== drag.id);
+      const p = mainPos(ev);
+      let at = ids.findIndex(id => {
+        const r = tiles[id].getBoundingClientRect();
+        return p < (m === 'col' ? r.top + r.height / 2 : r.left + r.width / 2);
+      });
+      if (at < 0) at = ids.length;
+      const next = [...ids.slice(0, at), drag.id, ...ids.slice(at)];
+      if (next.join() !== visible().join()) {
+        L.order = [...next, ...L.order.filter(id => L.hidden[id])];
+        layout();
+        tiles[drag.id].classList.add('dragging');
+      }
+    }
   });
   window.addEventListener('pointerup', () => {
     if (!drag) return;
-    drag.t.classList.remove('dragging');
+    if (drag.kind === 'reorder') tiles[drag.id].classList.remove('dragging');
     drag = null;
+    document.documentElement.classList.remove('board-dragging');
+    window.dispatchEvent(new Event('resize'));
     store();
   });
-  // Breitere Kachel: Zeitleiste neu zeichnen
-  let sizeTimer = null;
-  const ro = new ResizeObserver(() => {
-    clearTimeout(sizeTimer);
-    sizeTimer = setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
-  });
-  Object.values(tiles).forEach(t => ro.observe(t));
 
-  // Leere Flächen lassen Klicks zum Desktop durch, nur Kacheln (und Dialoge) fangen die Maus
+  // ---------- Maus-Durchlass: leere Flächen lassen Klicks zum Desktop durch ----------
   let interactive = null;
   function updateInteractive(x, y) {
     if (drag) return;
     const el = document.elementFromPoint(x, y);
-    const on = !!el && el !== document.documentElement && el !== document.body && el !== root;
+    const on = !!el && el !== document.documentElement && el !== document.body;
     if (on !== interactive) { interactive = on; host.setInteractive(on); }
   }
   window.addEventListener('mousemove', ev => updateInteractive(ev.clientX, ev.clientY));
 
-  // Gesperrt: Kacheln verbergen. Oben rechts bleibt ein kleines Etikett mit Schloss,
-  // erst ein Klick darauf öffnet das Ziffernfeld.
+  // ---------- Sperren: nur ein kleines Etikett oben rechts, ein Klick öffnet das Ziffernfeld ----------
   const lock = $('lock');
   const badge = document.createElement('button');
   badge.id = 'lockBadge';
@@ -176,31 +237,41 @@
   badge.onclick = () => setCollapsed(false);
   collapse.onclick = () => setCollapsed(true);
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && !lock.hidden && !document.documentElement.classList.contains('lock-collapsed')) {
-      if (lockMode === 'unlock') setCollapsed(true);
-    }
+    if (ev.key === 'Escape' && !lock.hidden && lockMode === 'unlock') setCollapsed(true);
   });
   let laidOut = false, wasLocked = null;
   const syncLock = () => {
     const locked = !lock.hidden;
     document.documentElement.classList.toggle('locked', locked);
-    // Beim Sperren (und beim Start mit vorhandenem Code) nur das Etikett zeigen
     if (locked && wasLocked !== true) setCollapsed(lockMode === 'unlock');
     if (!locked) setCollapsed(false);
     wasLocked = locked;
-    // Erst nach dem Entsperren ist alles gezeichnet und die Kachelhöhen stimmen
-    if (lock.hidden && !laidOut) { laidOut = true; requestAnimationFrame(() => { if (!applySaved()) defaultLayout(); }); }
+    // Erst nach dem Entsperren ist alles gezeichnet
+    if (!locked && !laidOut) { laidOut = true; requestAnimationFrame(layout); }
   };
   new MutationObserver(syncLock).observe(lock, { attributes: true, attributeFilter: ['hidden'] });
   syncLock();
 
+  // ---------- Befehle aus dem Taskleisten-Menü ----------
   host.onCommand(cmd => {
-    if (cmd.type === 'toggle') setHidden(cmd.id, !tiles[cmd.id].hidden);
-    else if (cmd.type === 'reset') defaultLayout();
+    if (cmd.type === 'toggle') setHidden(cmd.id, !L.hidden[cmd.id]);
+    else if (cmd.type === 'mode') setMode(cmd.mode);
+    else if (cmd.type === 'reset') { const mode = L.mode; L = fresh(); L.mode = mode; layout(); }
     else if (cmd.type === 'lock') $('lockNow').click();
   });
   window.addEventListener('resize', () => {
-    // Bildschirm kleiner geworden: Kacheln in den sichtbaren Bereich holen
-    for (const t of Object.values(tiles)) if (!t.hidden) place(t, t.offsetLeft, t.offsetTop);
+    // Bildschirm kleiner geworden: App in den sichtbaren Bereich holen
+    if (!drag && board.style.left) place(board.offsetLeft, board.offsetTop);
   });
+  layout();
+
+  // Die Hilfe am i-Symbol schwebt frei, damit sie nicht vom Modulrand abgeschnitten wird
+  const info = $('infoBtn'), tip = $('infoTip');
+  const placeTip = () => {
+    const r = info.getBoundingClientRect(), h = tip.offsetHeight, w = tip.offsetWidth;
+    tip.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + 'px';
+    tip.style.top = (r.bottom + 6 + h > innerHeight ? Math.max(8, r.top - 6 - h) : r.bottom + 6) + 'px';
+  };
+  info.addEventListener('mouseenter', placeTip);
+  info.addEventListener('focus', placeTip);
 })();

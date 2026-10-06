@@ -1,5 +1,5 @@
-// Zeitjournal als Desktop-Kacheln: ein durchsichtiges, rahmenloses Fenster über dem Arbeitsbereich.
-// Leere Flächen lassen Mausklicks zum Desktop durch, nur die Kacheln selbst sind bedienbar.
+// Zeitjournal als Desktop-App: ein durchsichtiges, rahmenloses Fenster über dem Arbeitsbereich.
+// Leere Flächen lassen Mausklicks zum Desktop durch, nur die Module selbst sind bedienbar.
 const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +11,7 @@ let settings = { onTop: false, firstRunDone: false };
 try { Object.assign(settings, JSON.parse(fs.readFileSync(settingsFile(), 'utf8'))); } catch (e) { /* Standard */ }
 const saveSettings = () => { try { fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2)); } catch (e) { /* ignorieren */ } };
 
-let win = null, tray = null, tiles = [];
+let win = null, tray = null, tiles = [], mode = 'col';
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -51,8 +51,10 @@ const send = cmd => { if (win) { win.showInactive(); win.webContents.send('comma
 function buildMenu() {
   const autostart = app.getLoginItemSettings().openAtLogin;
   return Menu.buildFromTemplate([
-    { label: 'Kacheln', submenu: tiles.map(t => ({ label: t.name, type: 'checkbox', checked: t.visible, click: () => send({ type: 'toggle', id: t.id }) })) },
-    { label: 'Kacheln neu anordnen', click: () => send({ type: 'reset' }) },
+    { label: 'Module', submenu: tiles.map(t => ({ label: t.name, type: 'checkbox', checked: t.visible, click: () => send({ type: 'toggle', id: t.id }) })) },
+    { label: 'Einspaltig (hochkant)', type: 'radio', checked: mode === 'col', click: () => send({ type: 'mode', mode: 'col' }) },
+    { label: 'Eine Zeile (querformatig)', type: 'radio', checked: mode === 'row', click: () => send({ type: 'mode', mode: 'row' }) },
+    { label: 'Größen zurücksetzen', click: () => send({ type: 'reset' }) },
     { type: 'separator' },
     { label: 'Immer im Vordergrund', type: 'checkbox', checked: settings.onTop, click: item => {
       settings.onTop = item.checked; saveSettings(); win.setAlwaysOnTop(settings.onTop);
@@ -80,7 +82,7 @@ app.whenReady().then(() => {
   refreshMenu();
 
   ipcMain.on('interactive', (_e, on) => win.setIgnoreMouseEvents(!on, { forward: true }));
-  ipcMain.on('tiles', (_e, list) => { tiles = list; refreshMenu(); });
+  ipcMain.on('tiles', (_e, info) => { tiles = info.tiles || []; mode = info.mode || 'col'; refreshMenu(); });
   screen.on('display-metrics-changed', fitToScreen);
   screen.on('display-added', fitToScreen);
   screen.on('display-removed', fitToScreen);

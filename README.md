@@ -32,15 +32,20 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 
 ## Windows-Desktop-Version
 
-Das Zeitjournal gibt es auch als Desktop-Programm für Windows. Es liegt durchsichtig über dem Desktop, sichtbar sind nur die einzelnen Kacheln (Uhr, Kategorien, Tag, Woche, Monat, Summen).
+Das Zeitjournal gibt es auch als Desktop-Programm für Windows. Es liegt durchsichtig über dem Desktop. Sichtbar ist eine App aus Modulen (Uhr, Kategorien, Tag, Summen, Woche, Monat) mit durchsichtigen Zwischenräumen.
 
-![Desktop-Version](docs/desktop.png)
+![Desktop-Version, einspaltig](docs/desktop.png)
+
+![Desktop-Version, als Zeile](docs/desktop-zeile.png)
 
 - **Installieren:** unter [Releases](https://github.com/matthiassuetterlin/Zeitjournal/releases) die neueste `Zeitjournal-Setup-….exe` herunterladen und doppelklicken. Weil der Installer nicht signiert ist, warnt Windows beim ersten Mal; dann „Weitere Informationen“ und „Trotzdem ausführen“ wählen.
-- **Kacheln anordnen:** an der Titelleiste einer Kachel ziehen. Am rechten Rand ziehen macht sie breiter oder schmaler. Die Anordnung bleibt gespeichert.
-- **Symbol in der Taskleiste** (rechts unten, bei den kleinen Symbolen): Kacheln ein- und ausblenden, neu anordnen, immer im Vordergrund, mit Windows starten, sperren, beenden.
-- Klicks auf freie Flächen gehen zum Desktop durch. Das Programm startet automatisch mit Windows (abschaltbar im Menü).
-- Die Daten liegen auf dem Rechner und sind mit dem Code verschlüsselt, getrennt von der Webseite.
+- **Anordnung:** oben „Spalte“ (alles untereinander) oder „Zeile“ (alles nebeneinander).
+- **Größen:** einen Zwischenraum ziehen, dann wird das eine Modul größer und das Nachbarmodul kleiner. Am äußeren Rand ziehen macht die ganze Spalte breiter bzw. die Zeile höher.
+- **Reihenfolge:** ein Modul an seiner Titelleiste an eine andere Stelle ziehen. Die ganze App verschiebt man an der Leiste „Zeitjournal“.
+- **Farben:** Rechtsklick auf einen Block oder eine Kategorie, oder „⋯“ an der Kategorie. Projekte bekommen ihre Farbe über „●“ im Projektmenü. Das geht auch auf der Webseite.
+- **Symbol in der Taskleiste** (rechts unten): Module ein- und ausblenden, Spalte oder Zeile, Größen zurücksetzen, immer im Vordergrund, mit Windows starten, sperren, beenden.
+- **Gesperrt** bleibt oben rechts nur ein kleines Etikett mit Schloss; ein Klick darauf öffnet das Ziffernfeld.
+- Klicks auf freie Flächen gehen zum Desktop durch. Die Daten liegen auf dem Rechner und sind mit dem Code verschlüsselt, getrennt von der Webseite.
 
 Selbst bauen: im Ordner `desktop` `npm install` und `npm run dist`. Zum Ausprobieren ohne Installer: `npm start`.
 

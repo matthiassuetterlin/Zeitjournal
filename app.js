@@ -9,6 +9,7 @@ const CATEGORIES = [
   { id: 'krankheit', name: 'Krankheit', color: '#dc2626' },
 ];
 const catById = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
+const DEFAULT_COLORS = Object.fromEntries(CATEGORIES.map(c => [c.id, c.color]));
 // Blautöne für einzelne Projekte, damit sie zur Kategorie „Projekte“ passen
 const PROJECT_COLORS = ['#0ea5e9', '#1e40af', '#0891b2', '#60a5fa', '#0369a1', '#1d4ed8', '#155e75', '#38bdf8'];
 
@@ -23,6 +24,7 @@ const state = {
   cat: CATEGORIES[0].id,
   project: null,    // gewähltes Projekt für neue Blöcke
   snap: 15,
+  catColors: {},   // selbst gewählte Farben der Kategorien
 };
 const projById = id => state.projects.find(p => p.id === id) || null;
 // Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
@@ -78,7 +80,7 @@ async function unlockWith(pw) {
   const salt = fromB64(rec.salt);
   const key = await deriveKey(pw, salt);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.data)); // wirft bei falschem Passwort
-  Object.assign(state, JSON.parse(td.decode(plain)));
+  Object.assign(state, { catColors: {} }, JSON.parse(td.decode(plain)));
   if (!Array.isArray(state.projects)) state.projects = [];
   cryptoKey = key; cryptoSalt = salt;
 }
@@ -174,6 +176,8 @@ const $ = id => document.getElementById(id);
 const track = $('track');
 
 function render() {
+  // Selbst gewählte Farben übernehmen
+  CATEGORIES.forEach(c => { c.color = state.catColors?.[c.id] || DEFAULT_COLORS[c.id]; });
   renderHistoryButtons();
   // Die Monatsansicht folgt dem gewählten Tag, bis man selbst blättert
   if (viewDate !== lastViewDate) { monthView = viewDate.slice(0, 7); lastViewDate = viewDate; }
@@ -210,10 +214,14 @@ function renderPalette() {
     b.className = 'cat' + (active ? ' active' : '');
     b.style.borderColor = active ? c.color : '';
     const proj = c.id === 'projekte' ? projById(state.project) : null;
-    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span>${c.name}<span class="sub"></span><kbd>${i + 1}</kbd>`;
+    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span>${c.name}<span class="sub"></span><kbd>${i + 1}</kbd><span class="dots" title="Farbe ändern">⋯</span>`;
     if (proj) b.querySelector('.sub').textContent = '· ' + proj.name;
     b.title = 'Kategorie wählen. Ist ein Block markiert, wird er umgefärbt. Läuft die Uhr, wird auf diese Kategorie gewechselt.';
-    b.onclick = () => chooseCategory(c.id, c.id === 'projekte' ? state.project : undefined);
+    b.onclick = ev => {
+      if (ev.target.closest('.dots')) { const r = ev.target.getBoundingClientRect(); openColorMenu(r.left, r.bottom + 4, { type: 'cat', id: c.id }); return; }
+      chooseCategory(c.id, c.id === 'projekte' ? state.project : undefined);
+    };
+    b.oncontextmenu = ev => { ev.preventDefault(); openColorMenu(ev.clientX, ev.clientY, { type: 'cat', id: c.id }); };
     if (c.id !== 'projekte') { p.appendChild(b); return; }
     // „Projekte“ bekommt ein Aufklappmenü für einzelne Projekte
     const group = document.createElement('div');
@@ -265,10 +273,11 @@ function renderProjectMenu() {
       name.className = 'name';
       name.textContent = pr.name;
       it.appendChild(name);
-      it.insertAdjacentHTML('beforeend', '<button class="act" data-a="ren" title="Umbenennen">✎</button><button class="act" data-a="del" title="Löschen">✕</button>');
+      it.insertAdjacentHTML('beforeend', '<button class="act" data-a="col" title="Farbe ändern">●</button><button class="act" data-a="ren" title="Umbenennen">✎</button><button class="act" data-a="del" title="Löschen">✕</button>');
     }
     it.onclick = ev => {
       const a = ev.target.dataset.a;
+      if (a === 'col') { const r = ev.target.getBoundingClientRect(); openColorMenu(r.left, r.bottom + 4, { type: 'proj', id: pr.id }); return; }
       if (a === 'ren') { renamingProject = pr.id; renderPalette(); return; }
       if (a === 'del') { deleteProject(pr.id); return; }
       if (renamingProject === pr.id) return;
@@ -786,7 +795,7 @@ $('importJson').onchange = async ev => {
     if (!Array.isArray(data.entries)) throw new Error();
     if (!await askConfirm(`${data.entries.length} Einträge laden? Die aktuellen Daten werden ersetzt.`, 'Laden')) return;
     snapshot();
-    Object.assign(state, { projects: [] }, data);
+    Object.assign(state, { projects: [], catColors: {} }, data);
     save();
     render();
   } catch (e) {
@@ -872,6 +881,77 @@ $('trackScroll').addEventListener('wheel', ev => {
 window.addEventListener('resize', () => renderTrack());
 makeResizer($('monthResize'), 'monthW', 'x', 20);
 applyLayout();
+
+// ---------- Farben ändern (Rechtsklick auf Block oder Kategorie, ⋯ an der Kategorie) ----------
+const SWATCHES = ['#2563eb', '#0ea5e9', '#4f46e5', '#7c3aed', '#c026d3', '#db2777', '#dc2626', '#ea580c',
+  '#d97706', '#ca8a04', '#65a30d', '#16a34a', '#0d9488', '#0f766e', '#475569', '#78716c'];
+const colorMenu = document.createElement('div');
+colorMenu.className = 'colormenu';
+colorMenu.hidden = true;
+document.body.appendChild(colorMenu);
+function openColorMenu(x, y, target) {
+  const proj = target.type === 'proj' ? projById(target.id) : null;
+  if (target.type === 'proj' && !proj) return;
+  const cat = catById(target.id);
+  const current = proj ? proj.color : cat.color;
+  colorMenu.innerHTML = '';
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = 'Farbe für ' + (proj ? proj.name : cat.name);
+  const grid = document.createElement('div');
+  grid.className = 'swatches';
+  for (const col of SWATCHES) {
+    const sw = document.createElement('button');
+    sw.style.background = col;
+    sw.title = col;
+    if (col.toLowerCase() === current.toLowerCase()) sw.classList.add('current');
+    sw.onclick = () => setColor(target, col);
+    grid.appendChild(sw);
+  }
+  const own = document.createElement('label');
+  own.className = 'own';
+  own.innerHTML = '<input type="color"> Eigene Farbe …';
+  const inp = own.querySelector('input');
+  inp.value = current;
+  inp.oninput = () => setColor(target, inp.value, true);
+  inp.onchange = () => closeColorMenu();
+  colorMenu.append(title, grid, own);
+  if (!proj && state.catColors[target.id]) {
+    const reset = document.createElement('button');
+    reset.className = 'reset';
+    reset.textContent = 'Standardfarbe';
+    reset.onclick = () => setColor(target, null);
+    colorMenu.appendChild(reset);
+  }
+  colorMenu.hidden = false;
+  const w = colorMenu.offsetWidth, h = colorMenu.offsetHeight;
+  colorMenu.style.left = Math.max(8, Math.min(innerWidth - w - 8, x)) + 'px';
+  colorMenu.style.top = (y + h > innerHeight - 8 ? Math.max(8, y - h) : y) + 'px';
+}
+function closeColorMenu() { colorMenu.hidden = true; }
+function setColor(target, col, keepOpen) {
+  if (target.type === 'proj') {
+    const pr = projById(target.id);
+    if (!pr || pr.color === col) return;
+    if (!keepOpen) snapshot();
+    pr.color = col;
+  } else {
+    if (col) state.catColors[target.id] = col; else delete state.catColors[target.id];
+  }
+  save();
+  render();
+  if (!keepOpen) closeColorMenu();
+}
+document.addEventListener('pointerdown', ev => { if (!colorMenu.hidden && !colorMenu.contains(ev.target)) closeColorMenu(); }, true);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !colorMenu.hidden) { ev.stopPropagation(); closeColorMenu(); } }, true);
+// Rechtsklick auf einen Block: Farbe seines Projekts bzw. seiner Kategorie, auf freier Leiste: gewählte Kategorie
+track.addEventListener('contextmenu', ev => {
+  ev.preventDefault();
+  const blockEl = ev.target.closest('.block');
+  const e = blockEl && state.entries.find(x => x.id === blockEl.dataset.id);
+  const cat = e ? e.cat : state.cat, project = e ? e.project : state.project;
+  openColorMenu(ev.clientX, ev.clientY, cat === 'projekte' && projById(project) ? { type: 'proj', id: project } : { type: 'cat', id: cat });
+});
 
 // ---------- Rückfragen & Hinweise (statt confirm/alert, die eingebettet nicht funktionieren) ----------
 function askConfirm(text, okLabel = 'OK') {
@@ -1000,10 +1080,11 @@ async function pinComplete() {
   }
   // entsperren
   checking = true; applyWait();
+  let ok = false;
   try {
     await unlockWith(code);
+    ok = true;
     writeWait({ fails: 0, until: 0 });
-    startApp();
   } catch (e) {
     const w = readWait();
     w.fails++;
@@ -1011,6 +1092,7 @@ async function pinComplete() {
     writeWait(w);
     pinError('Falscher Code.');
   } finally { checking = false; applyWait(); }
+  if (ok) startApp();   // außerhalb von try: ein Fehler beim Zeichnen ist kein falscher Code
 }
 function pressDigit(d) {
   if ($('lock').hidden || lockMode === 'legacy' || checking || applyWait() || pin.length >= PIN_LEN) return;
@@ -1053,7 +1135,8 @@ async function lockApp() {
   await flushSave();
   cryptoKey = null;
   cryptoSalt = null;
-  Object.assign(state, { entries: [], projects: [], running: null });
+  Object.assign(state, { entries: [], projects: [], running: null, catColors: {} });
+  closeColorMenu();
   history.length = 0;
   future.length = 0;
   selectedId = null;
