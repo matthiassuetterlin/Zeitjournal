@@ -30,7 +30,8 @@ function createWindow() {
     show: false,
     title: 'Zeitjournal',
     icon: path.join(__dirname, 'build', 'icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
+    // Auch im Hintergrund (nicht aktiv, verdeckt) weiterlaufen, damit Uhr und Abgleich live bleiben
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, 'web', 'index.html'));

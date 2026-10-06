@@ -146,7 +146,8 @@
   // Fehlt die Funktion zj_rev auf dem Server (ältere Einrichtung), wird wie früher alle 30 Sekunden ganz abgeglichen.
   let revMissing = false, lastFull = 0;
   async function poll() {
-    if (!active() || busy || document.visibilityState === 'hidden') return;
+    // Die Desktop-App liegt dauerhaft auf dem Bildschirm und gilt verdeckt oft als „versteckt“: dort immer abgleichen
+    if (!active() || busy || (document.visibilityState === 'hidden' && !window.zeitjournalDesktop)) return;
     if (dirty()) return syncNow();
     if (revMissing) { if (Date.now() - lastFull >= FULL_MS) { lastFull = Date.now(); syncNow(); } return; }
     try {
