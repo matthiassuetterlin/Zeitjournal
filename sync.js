@@ -4,8 +4,8 @@
 // (verschlüsselt mit dem Code im lokalen Speicher). Der Server sieht nur eine daraus abgeleitete Kennung.
 // Ändern zwei Geräte gleichzeitig, werden die Änderungen beider zusammengeführt (pro Block, Projekt und Farbe).
 (() => {
-  const SYNC_URL = '';   // Project URL des Supabase-Projekts, z. B. https://abcd.supabase.co
-  const SYNC_ANON = '';  // anon/publishable key (öffentlich)
+  const SYNC_URL = 'https://yovmtxtinbgypvvwvcnk.supabase.co';   // Project URL des Supabase-Projekts
+  const SYNC_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlvdm10eHRpbmJneXB2dnd2Y25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTkwOTMsImV4cCI6MjEwNjg3NTA5M30.cpQ54UX-FKzIUsL9a815SoUNCGrQikFLnuON303soos';  // anon key (öffentlich, Rolle anon)
   const POLL_MS = 30000, PUSH_DELAY = 2500;
   const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';   // Crockford-Base32, ohne I, L, O, U
 
@@ -37,7 +37,8 @@
   async function rpc(fn, body) {
     const r = await fetch(`${cfg.url.replace(/\/$/, '')}/rest/v1/rpc/${fn}`, {
       method: 'POST',
-      headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json' },
+      // Neue Schlüssel (sb_publishable_…) gehen nur als apikey, alte JWT-Schlüssel zusätzlich als Bearer
+      headers: { apikey: cfg.key, ...(cfg.key.startsWith('eyJ') ? { Authorization: `Bearer ${cfg.key}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(`${fn}: ${r.status}`);

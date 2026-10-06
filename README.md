@@ -54,7 +54,7 @@ Die Windows-App und die Webseite können ihre Zeiten über einen kleinen Online-
 - Hochgeladen wird nur ein mit dem Sync-Schlüssel verschlüsselter Block. Der Schlüssel bleibt auf den Geräten, mit dem Code verschlüsselt.
 - Ändern zwei Geräte gleichzeitig etwas, werden beide Änderungen zusammengeführt. Gelöschte Blöcke bleiben gelöscht.
 - Das Claude-Seitenfenster gleicht nicht mit ab, weil es keine fremden Server erreichen kann.
-- Einrichtung des Speichers: `docs/sync-setup.sql` im Supabase-SQL-Editor ausführen und in `sync.js` die Project URL und den anon key eintragen.
+- Einrichtung des Speichers: `docs/sync-setup.sql` im Supabase-SQL-Editor ausführen und in `sync.js` die Project URL und den anon key eintragen (beide öffentlich; den secret/service_role key niemals eintragen).
 
 ## Code-Sperre
 
