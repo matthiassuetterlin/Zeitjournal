@@ -9,8 +9,8 @@
   --line-soft: #f0f2f5;
   --track: #fafbfc;
   --hover: #f1f3f6;
-  --accent: #2563eb;
-  --danger: #dc2626;
+  --accent: #3f6a93;
+  --danger: #b5483e;
   --shadow: 0 8px 24px rgba(0,0,0,.12);
 }
 @media (prefers-color-scheme: dark) {
@@ -25,8 +25,8 @@
     --line-soft: #323230;
     --track: #242422;
     --hover: #363633;
-    --accent: #5ea1f2;
-    --danger: #f87171;
+    --accent: #7fa7cf;
+    --danger: #d9765f;
     --shadow: 0 8px 24px rgba(0,0,0,.5);
   }
 }
@@ -41,8 +41,8 @@
   --line-soft: #323230;
   --track: #242422;
   --hover: #363633;
-  --accent: #5ea1f2;
-  --danger: #f87171;
+  --accent: #7fa7cf;
+  --danger: #d9765f;
   --shadow: 0 8px 24px rgba(0,0,0,.5);
 }
 
@@ -85,8 +85,8 @@ button:hover, .filebtn:hover { border-color: var(--line-strong); }
 .startstop {
   font-weight: 600;
   min-width: 120px;
-  background: #16a34a;
-  border-color: #16a34a;
+  background: #5b8f5a;
+  border-color: #5b8f5a;
   color: white;
 }
 .startstop.running { background: var(--danger); border-color: var(--danger); }

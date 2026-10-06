@@ -2,16 +2,24 @@
 
 // ---------- Kategorien ----------
 const CATEGORIES = [
-  { id: 'projekte', name: 'Projekte', color: '#2563eb' },
-  { id: 'it-frankfurt', name: 'IT Frankfurt', color: '#0d9488' },
-  { id: 'it-group', name: 'IT Group', color: '#7c3aed' },
-  { id: 'intern', name: 'Intern allgemein', color: '#d97706' },
-  { id: 'krankheit', name: 'Krankheit', color: '#dc2626' },
+  { id: 'projekte', name: 'Projekte', color: '#4f7cac' },
+  { id: 'it-frankfurt', name: 'IT Frankfurt', color: '#5e9c8f' },
+  { id: 'it-group', name: 'IT Group', color: '#8a6fb0' },
+  { id: 'intern', name: 'Intern allgemein', color: '#d08c4a' },
+  { id: 'krankheit', name: 'Krankheit', color: '#c2564b' },
 ];
 const catById = id => CATEGORIES.find(c => c.id === id) || CATEGORIES[0];
 const DEFAULT_COLORS = Object.fromEntries(CATEGORIES.map(c => [c.id, c.color]));
 // Blautöne für einzelne Projekte, damit sie zur Kategorie „Projekte“ passen
-const PROJECT_COLORS = ['#0ea5e9', '#1e40af', '#0891b2', '#60a5fa', '#0369a1', '#1d4ed8', '#155e75', '#38bdf8'];
+const PROJECT_COLORS = ['#7fa7cf', '#3f6a93', '#6c93b8', '#2f5577', '#9bbbd9', '#4c789f', '#5f86ae', '#2a4a6b'];
+// Frühere, grellere Projektfarben werden beim Zeichnen durch die neuen an gleicher Stelle ersetzt
+const OLD_PROJECT_COLORS = ['#0ea5e9', '#1e40af', '#0891b2', '#60a5fa', '#0369a1', '#1d4ed8', '#155e75', '#38bdf8'];
+// Gut lesbare Schrift auf einer Blockfarbe: dunkel auf hellen Farben, sonst weiß
+function textOn(hex) {
+  const n = parseInt(hex.slice(1), 16), lin = c => { c /= 255; return c <= 0.04 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.36 ? '#1f1f1d' : '#fff';
+}
 
 // ---------- Zustand & Speicher ----------
 const STORAGE_KEY = 'zeitjournal.v1';
@@ -178,6 +186,7 @@ const track = $('track');
 function render() {
   // Selbst gewählte Farben übernehmen
   CATEGORIES.forEach(c => { c.color = state.catColors?.[c.id] || DEFAULT_COLORS[c.id]; });
+  for (const pr of state.projects) { const i = OLD_PROJECT_COLORS.indexOf(pr.color); if (i >= 0) pr.color = PROJECT_COLORS[i]; }
   renderHistoryButtons();
   // Die Monatsansicht folgt dem gewählten Tag, bis man selbst blättert
   if (viewDate !== lastViewDate) { monthView = viewDate.slice(0, 7); lastViewDate = viewDate; }
@@ -364,6 +373,7 @@ function renderTrack() {
     el.style.left = pct(e.start) + '%';
     el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
     el.style.background = entryColor(e);
+    el.style.color = textOn(entryColor(e));
     el.title = `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`;
     el.innerHTML = `<span class="title"></span><span class="meta">${fmtTime(e.start)}–${fmtTime(e.end)} · ${fmtDur(e.end - e.start)}</span>
       <div class="handle l" data-h="l"></div>${e.id === state.running ? '' : '<div class="handle r" data-h="r"></div>'}`;
@@ -884,8 +894,9 @@ makeResizer($('monthResize'), 'monthW', 'x', 20);
 applyLayout();
 
 // ---------- Farben ändern (Rechtsklick auf Block oder Kategorie, ⋯ an der Kategorie) ----------
-const SWATCHES = ['#2563eb', '#0ea5e9', '#4f46e5', '#7c3aed', '#c026d3', '#db2777', '#dc2626', '#ea580c',
-  '#d97706', '#ca8a04', '#65a30d', '#16a34a', '#0d9488', '#0f766e', '#475569', '#78716c'];
+// Abgestimmte, gedeckte Farben (warm → kühl), die auf hellem und dunklem Grund ruhig wirken
+const SWATCHES = ['#c2564b', '#d9765f', '#d08c4a', '#d6b25e', '#a3a65b', '#6f9e6a', '#5e9c8f', '#4e8a9a',
+  '#4f7cac', '#7fa7cf', '#3f5f8a', '#8a6fb0', '#a8668e', '#c27a8f', '#8c7b6b', '#7a7a75'];
 const colorMenu = document.createElement('div');
 colorMenu.className = 'colormenu';
 colorMenu.hidden = true;
