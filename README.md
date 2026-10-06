@@ -30,6 +30,20 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 | Tage wechseln | ← / → / T, oder in der Monats- oder Wochenübersicht auf einen Tag klicken |
 | Monatsübersicht | Jeder Tag zeigt Stunden und einen Farbstreifen, was gearbeitet wurde; ‹ › blättert die Monate |
 
+## Windows-Desktop-Version
+
+Das Zeitjournal gibt es auch als Desktop-Programm für Windows. Es liegt durchsichtig über dem Desktop, sichtbar sind nur die einzelnen Kacheln (Uhr, Kategorien, Tag, Woche, Monat, Summen).
+
+![Desktop-Version](docs/desktop.png)
+
+- **Installieren:** unter [Releases](https://github.com/matthiassuetterlin/Zeitjournal/releases) die neueste `Zeitjournal-Setup-….exe` herunterladen und doppelklicken. Weil der Installer nicht signiert ist, warnt Windows beim ersten Mal; dann „Weitere Informationen“ und „Trotzdem ausführen“ wählen.
+- **Kacheln anordnen:** an der Titelleiste einer Kachel ziehen. Am rechten Rand ziehen macht sie breiter oder schmaler. Die Anordnung bleibt gespeichert.
+- **Symbol in der Taskleiste** (rechts unten, bei den kleinen Symbolen): Kacheln ein- und ausblenden, neu anordnen, immer im Vordergrund, mit Windows starten, sperren, beenden.
+- Klicks auf freie Flächen gehen zum Desktop durch. Das Programm startet automatisch mit Windows (abschaltbar im Menü).
+- Die Daten liegen auf dem Rechner und sind mit dem Code verschlüsselt, getrennt von der Webseite.
+
+Selbst bauen: im Ordner `desktop` `npm install` und `npm run dist`. Zum Ausprobieren ohne Installer: `npm start`.
+
 ## Code-Sperre
 
 Beim Öffnen fragt das Zeitjournal nach einem 4-stelligen Code, eingegeben über ein Ziffernfeld wie beim Telefon (Maus, Finger oder Zifferntasten). Die Zeiten werden mit dem Code verschlüsselt (AES-GCM, Schlüssel per PBKDF2) im Browser gespeichert und nie an einen Server geschickt. Nach drei falschen Codes muss man 30 Sekunden warten, danach jeweils doppelt so lange.

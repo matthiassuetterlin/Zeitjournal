@@ -422,3 +422,52 @@ button:focus-visible, .filebtn:focus-within { outline: 2px solid var(--accent); 
   .summary-grid { grid-template-columns: 1fr; }
   .topbar, .palette, main, .footer { padding-left: 16px; padding-right: 16px; }
 }
+
+/* ---------- Desktop-Version: einzelne Kacheln auf transparentem Hintergrund ---------- */
+html.desktop, html.desktop body { background: transparent; overflow: hidden; height: 100%; }
+#tiles { position: fixed; inset: 0; }
+html.desktop.locked #tiles { visibility: hidden; }
+.tile {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.tile-grip { position: absolute; top: 12px; bottom: 12px; right: -5px; width: 10px; cursor: ew-resize; touch-action: none; }
+.tile.dragging { opacity: .85; }
+.tile-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  cursor: grab;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 12px 12px 0 0;
+  flex: none;
+}
+.tile.dragging .tile-bar { cursor: grabbing; }
+.tile-close { border: 0; background: none; padding: 0 6px; font-size: 16px; line-height: 1; color: var(--muted); opacity: 0; }
+.tile:hover .tile-close { opacity: 1; }
+.tile-body { flex: 1 1 auto; }
+.tile-body > * { background: none !important; border: 0 !important; border-radius: 0 !important; margin: 0; }
+.tile-body > .topbar { padding: 10px 12px; gap: 12px; }
+.tile-body > .topbar h1 { display: none; }
+.tile-body > .topbar .date-label { min-width: 0; }
+.tile-body > .palette, .tile-body > .footer { padding: 10px 12px; }
+.tile-body > section { padding: 12px; }
+.tile-body > .summary > h2 { display: none; }
+html.desktop .lock { background: transparent; pointer-events: none; }
+html.desktop .lock-card { pointer-events: auto; }
+html.desktop .dialog-backdrop { background: transparent; }
+.tile-body > .topbar .clock { margin-left: 0; width: 100%; flex-wrap: wrap; row-gap: 6px; }
+.tile-body > .topbar .running-info { flex: 1 0 100%; order: 1; min-height: 1.3em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-body > .topbar button { white-space: nowrap; }
