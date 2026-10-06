@@ -81,7 +81,7 @@ function fmtTime(m) {
 }
 function fmtDur(m) {
   m = Math.round(m);
-  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h`;
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}\u00a0h`;
 }
 const snapTo = m => Math.round(m / state.snap) * state.snap;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -274,10 +274,14 @@ function renderTrack() {
     n.style.left = pct(nowMinutes()) + '%';
     track.appendChild(n);
   }
+  const trackW = track.clientWidth, trackH = track.clientHeight;
   for (const e of dayEntries(viewDate)) {
     const c = catById(e.cat);
     const el = document.createElement('div');
-    el.className = 'block' + (e.id === selectedId ? ' selected' : '') + (e.id === state.running ? ' running' : '');
+    // Schmale Blöcke beschriften wir senkrecht, damit Wörter nicht in Silben zerfallen
+    const wPx = ((e.end - e.start) / span) * trackW;
+    const vertical = wPx < 80 && trackH - 16 > wPx * 1.3;
+    el.className = 'block' + (vertical ? ' vertical' : '') + (vertical && wPx < 46 ? ' tight' : '') + (e.id === selectedId ? ' selected' : '') + (e.id === state.running ? ' running' : '');
     el.dataset.id = e.id;
     el.style.left = pct(e.start) + '%';
     el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
@@ -361,7 +365,7 @@ function renderMonth() {
       (date === viewDate ? ' current' : '') + (date === today ? ' today' : '');
     cell.title = parseDate(date).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) + (total ? ` · ${fmtDur(total)}` : '');
     const bar = total ? `<span class="mbar">${[...parts].map(([c, v]) => `<span style="flex:${v};background:${c}"></span>`).join('')}</span>` : '<span class="mbar empty"></span>';
-    cell.innerHTML = `<span class="num">${Number(date.slice(8))}</span><span class="hrs">${total ? fmtDur(total).replace(' h', '') : ''}</span>${bar}`;
+    cell.innerHTML = `<span class="num">${Number(date.slice(8))}</span><span class="hrs">${total ? fmtDur(total).replace('\u00a0h', '') : ''}</span>${bar}`;
     cell.onclick = () => { viewDate = date; selectedId = null; render(); };
     grid.appendChild(cell);
   }
@@ -700,6 +704,56 @@ $('importJson').onchange = async ev => {
     ev.target.value = '';
   }
 };
+
+// ---------- Bereiche größer/kleiner ziehen ----------
+const LAYOUT_KEY = 'zeitjournal.layout';
+const LAYOUT_DEFAULT = { trackH: 120, monthW: 340 };
+let layout = { ...LAYOUT_DEFAULT };
+try { Object.assign(layout, JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}); } catch (e) { /* Standard */ }
+function applyLayout() {
+  layout.trackH = clamp(Math.round(layout.trackH), 70, 520);
+  layout.monthW = clamp(Math.round(layout.monthW), 240, 760);
+  document.documentElement.style.setProperty('--track-h', layout.trackH + 'px');
+  document.documentElement.style.setProperty('--month-w', layout.monthW + 'px');
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (e) { /* ignorieren */ }
+}
+// key: Wert in layout, axis: 'y' oder 'x', step: Pfeiltasten-Schritt
+function makeResizer(el, key, axis, step) {
+  el.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    const start = axis === 'y' ? ev.clientY : ev.clientX;
+    const v0 = layout[key];
+    el.setPointerCapture(ev.pointerId);
+    el.classList.add('dragging');
+    document.body.classList.add('resizing');
+    document.body.style.cursor = axis === 'y' ? 'ns-resize' : 'ew-resize';
+    const move = e => { layout[key] = v0 + ((axis === 'y' ? e.clientY : e.clientX) - start); applyLayout(); };
+    const up = () => {
+      el.classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      document.body.style.cursor = '';
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  });
+  el.addEventListener('dblclick', () => { layout[key] = LAYOUT_DEFAULT[key]; applyLayout(); });
+  el.addEventListener('keydown', ev => {
+    const d = { ArrowDown: step, ArrowRight: step, ArrowUp: -step, ArrowLeft: -step }[ev.key];
+    if (!d) return;
+    ev.preventDefault();
+    ev.stopPropagation(); // sonst wechselt ←/→ den Tag
+    layout[key] += d;
+    applyLayout();
+  });
+}
+makeResizer($('trackResize'), 'trackH', 'y', 20);
+makeResizer($('monthResize'), 'monthW', 'x', 20);
+applyLayout();
 
 // ---------- Rückfragen & Hinweise (statt confirm/alert, die eingebettet nicht funktionieren) ----------
 function askConfirm(text, okLabel = 'OK') {
