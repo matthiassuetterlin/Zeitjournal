@@ -34,16 +34,14 @@ Online: https://matthiassuetterlin.github.io/Zeitjournal/
 
 Das Zeitjournal gibt es auch als Desktop-Programm für Windows. Es liegt durchsichtig über dem Desktop. Sichtbar ist eine App aus Modulen (Uhr, Kategorien, Tag, Summen, Woche, Monat) mit durchsichtigen Zwischenräumen.
 
-![Desktop-Version, einspaltig](docs/desktop.png)
-
-![Desktop-Version, als Zeile](docs/desktop-zeile.png)
+![Desktop-Version](docs/desktop.png)
 
 - **Installieren:** unter [Releases](https://github.com/matthiassuetterlin/Zeitjournal/releases) die neueste `Zeitjournal-Setup-….exe` herunterladen und doppelklicken. Weil der Installer nicht signiert ist, warnt Windows beim ersten Mal; dann „Weitere Informationen“ und „Trotzdem ausführen“ wählen.
-- **Anordnung:** oben „Spalte“ (alles untereinander) oder „Zeile“ (alles nebeneinander).
-- **Größen:** einen Zwischenraum ziehen, dann wird das eine Modul größer und das Nachbarmodul kleiner. Am äußeren Rand ziehen macht die ganze Spalte breiter bzw. die Zeile höher.
-- **Reihenfolge:** ein Modul an seiner Titelleiste an eine andere Stelle ziehen. Die ganze App verschiebt man an der Leiste „Zeitjournal“.
+- **Anordnung:** oben Uhr und Kategorien, darunter die Tages-Zeitleiste quer, darunter Monat und Summen; Woche und Extras lassen sich dazuholen.
+- **Größen:** einen Zwischenraum ziehen, dann wird das eine Modul größer und das Nachbarmodul kleiner. An den Rändern und unteren Ecken zieht man die ganze App breiter, schmaler, länger oder kürzer.
+- **Module schließen:** das × oben rechts am Modul blendet es aus. Oben in der Leiste „Zeitjournal“ holt „+ Name“ es zurück. Die ganze App verschiebt man an dieser Leiste.
 - **Farben:** Rechtsklick auf einen Block oder eine Kategorie, oder „⋯“ an der Kategorie. Projekte bekommen ihre Farbe über „●“ im Projektmenü. Das geht auch auf der Webseite.
-- **Symbol in der Taskleiste** (rechts unten): Module ein- und ausblenden, Spalte oder Zeile, Größen zurücksetzen, immer im Vordergrund, mit Windows starten, sperren, beenden.
+- **Symbol in der Taskleiste** (rechts unten): Module ein- und ausblenden, Anordnung zurücksetzen, immer im Vordergrund, mit Windows starten, sperren, beenden.
 - **Gesperrt** bleibt oben rechts nur ein kleines Etikett mit Schloss; ein Klick darauf öffnet das Ziffernfeld.
 - Klicks auf freie Flächen gehen zum Desktop durch. Die Daten liegen auf dem Rechner und sind mit dem Code verschlüsselt, getrennt von der Webseite.
 
