@@ -36,6 +36,8 @@
         <button id="undo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
         <button id="redo" title="Wiederholen (Strg+Umschalt+Z)">↷ Wiederholen</button>
         <span class="spacer"></span>
+        <label class="label range" title="Welche Stunden die Zeitleiste zeigt (Blöcke außerhalb erweitern sie automatisch)">Von
+          <select id="dayFrom"></select> bis <select id="dayTo"></select></label>
         <span class="label">Zoom</span>
         <button id="zoomOut" title="Herauszoomen (Strg + Mausrad)">−</button>
         <button id="zoomFit" title="Ganzen Tag auf einmal zeigen">Ganzer Tag</button>
@@ -52,11 +54,15 @@
           </ul>
         </div>
       </div>
-      <div class="track-scroll" id="trackScroll">
-        <div class="track-inner" id="trackInner">
-          <div class="scale" id="scale"></div>
-          <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
+      <div class="track-wrap">
+        <button class="track-more" id="trackEarlier" title="Zeitleiste nach vorne verlängern (früher, auch in den Vortag)" aria-label="Früher">‹</button>
+        <div class="track-scroll" id="trackScroll">
+          <div class="track-inner" id="trackInner">
+            <div class="scale" id="scale"></div>
+            <div class="track" id="track" title="Ziehen, um einen Block anzulegen"></div>
+          </div>
         </div>
+        <button class="track-more" id="trackLater" title="Zeitleiste nach hinten verlängern (später, auch in den nächsten Tag)" aria-label="Später">›</button>
       </div>
       <div class="resize-y" id="trackResize" role="separator" aria-orientation="horizontal" aria-label="Höhe der Zeitleiste ändern" tabindex="0" title="Ziehen = Zeitleiste höher/niedriger · Doppelklick = zurücksetzen"></div>
 

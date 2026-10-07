@@ -213,7 +213,13 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 .day-tools .label { color: var(--muted); margin-right: 2px; }
 .day-tools button { padding: 3px 10px; }
 .day-tools button.active { border-color: var(--line-strong); font-weight: 600; }
-.track-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+.track-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; flex: 1; min-width: 0; }
+.track-wrap { display: flex; align-items: stretch; gap: 4px; }
+.track-more { flex: none; width: 24px; padding: 0; margin-top: 20px; margin-bottom: 2px; border-radius: 8px; font-size: 18px; line-height: 1; color: var(--muted); }
+.track-more:hover { color: var(--text); border-color: var(--line-strong); }
+.track .gridline.midnight { width: 2px; background: var(--line-strong); }
+.scale .daylabel { font-weight: 600; color: var(--text); white-space: nowrap; }
+.track .othday { position: absolute; top: 0; bottom: 0; background: var(--line-soft); opacity: .45; pointer-events: none; }
 .track-inner { min-width: 100%; }
 .block:active { cursor: grabbing; }
 .block.selected { outline: 3px solid var(--text); outline-offset: 1px; z-index: 4; }
@@ -643,3 +649,38 @@ html.board-dragging .tile-bar { cursor: grabbing; }
 .tile.moving { opacity: .45; }
 .drop-mark { position: absolute; z-index: 40; pointer-events: none; border-radius: 3px; background: var(--accent); }
 .drop-mark.swap { background: color-mix(in srgb, var(--accent) 14%, transparent); border: 2px solid var(--accent); border-radius: 12px; box-sizing: border-box; }
+
+/* ---------- Aufgeteilte Blöcke ---------- */
+.block .title, .block .meta { position: relative; z-index: 1; }
+.block.split { box-shadow: none; }
+.block .part { position: absolute; left: 0; right: 0; }
+.block .part.psel { box-shadow: inset 0 0 0 2px currentColor; }
+.block .part.lifted { box-shadow: 0 6px 16px rgba(0,0,0,.35), inset 0 0 0 2px currentColor; transform: scale(1.03); }
+.block .part.ptarget { box-shadow: inset 0 0 0 2px currentColor; filter: brightness(1.15); }
+.block .plabel { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: .8em; font-weight: 600; opacity: .95; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 34px); }
+.block.narrow .plabel { left: 5px; }
+.block .pdiv { position: absolute; left: 0; right: 0; height: 0; z-index: 3; border-top: 2px dashed rgba(255,255,255,.9); cursor: ns-resize; }
+.block .pdiv::before { content: ''; position: absolute; left: 0; right: 0; top: -7px; height: 12px; }
+.block .pdel, .block .bmore {
+  position: absolute; z-index: 4; padding: 0 5px; min-width: 0; height: 18px; line-height: 16px; font-size: 13px;
+  border: 0; border-radius: 4px; background: rgba(0,0,0,.28); color: #fff; opacity: 0; cursor: pointer;
+}
+.block .pdel { top: 3px; right: 12px; }
+.block .part:first-child .pdel { top: 4px; }
+.block .bmore { top: 4px; right: 12px; font-weight: 700; }
+.block.split .bmore { right: 34px; }
+.block:hover .bmore, .block.selected .bmore, .block .part:hover .pdel { opacity: 1; }
+.block .pdel:hover, .block .bmore:hover { background: rgba(0,0,0,.5); }
+.block.tiny .bmore, .block.tiny .pdel, .block.tiny .plabel, .block .part.thin .plabel { display: none; }
+.block .part.thin .pdel { top: 50%; transform: translateY(-50%); height: 14px; line-height: 12px; font-size: 11px; }
+.blockmenu {
+  position: fixed; z-index: 140; display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); font-size: 13px;
+}
+.blockmenu[hidden] { display: none; }
+.blockmenu button { border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
+.blockmenu button:hover { background: var(--hover); }
+
+/* Stundenbereich der Zeitleiste */
+.day-tools .range { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.day-tools .range select { padding: 2px 4px; font-size: 13px; }

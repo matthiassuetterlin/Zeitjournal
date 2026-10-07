@@ -39,8 +39,31 @@ const projById = id => state.projects.find(p => p.id === id) || null;
 // Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
 const entryColor = e => (e.cat === 'projekte' && projById(e.project)?.color) || catById(e.cat).color;
 const entryLabel = e => (e.cat === 'projekte' && projById(e.project)?.name) || catById(e.cat).name;
+// Aufgeteilte Blöcke: parts = [{ cat, project, w }] von oben nach unten, w = Anteil.
+// cat/project des Blocks sind immer die des obersten Teils.
+const partsOf = e => (e.parts && e.parts.length > 1 ? e.parts : [{ cat: e.cat, project: e.project || null, w: 1 }]);
+const partColor = p => (p.cat === 'projekte' && projById(p.project)?.color) || catById(p.cat).color;
+const partLabel = p => (p.cat === 'projekte' && projById(p.project)?.name) || catById(p.cat).name;
+// Minuten je Teil
+function partMinutes(e) {
+  const ps = partsOf(e), sum = ps.reduce((a, p) => a + p.w, 0) || 1;
+  return ps.map(p => ({ p, min: (e.end - e.start) * p.w / sum }));
+}
+// Welcher Teil liegt auf Höhe clientY im Block-Element?
+function partAt(e, el, clientY) {
+  const ps = partsOf(e), r = el.getBoundingClientRect(), sum = ps.reduce((a, p) => a + p.w, 0);
+  const y = clamp((clientY - r.top) / r.height, 0, 0.999) * sum;
+  let acc = 0;
+  for (let i = 0; i < ps.length; i++) { acc += ps[i].w; if (y < acc) return i; }
+  return ps.length - 1;
+}
+function syncHead(e) {
+  if (e.parts && e.parts.length > 1) { e.cat = e.parts[0].cat; e.project = e.parts[0].project; }
+  else { if (e.parts?.length === 1) { e.cat = e.parts[0].cat; e.project = e.parts[0].project; } delete e.parts; }
+}
 let viewDate = toDateStr(new Date());
 let selectedId = null;
+let selectedPart = 0;   // gewählter Teil eines aufgeteilten Blocks
 const history = [];   // Zustände vor einer Änderung
 const future = [];    // für Wiederholen zurückgelegte Zustände
 
@@ -173,11 +196,23 @@ function gapAt(date, m, exceptId) {
 }
 
 // ---------- Sichtbarer Bereich der Zeitleiste ----------
+// Sichtbarer Bereich: eingestellte Stunden (von/bis, auch in den Vortag bzw. nächsten Tag hinein),
+// erweitert um Blöcke außerhalb und um „jetzt“. Minuten relativ zu 0:00 des gezeigten Tages.
 function viewRange() {
-  let lo = 6 * 60, hi = 20 * 60;
+  let lo = (layout.dayFrom ?? 6) * 60, hi = (layout.dayTo ?? 24) * 60;
   for (const e of dayEntries(viewDate)) { lo = Math.min(lo, e.start); hi = Math.max(hi, e.end); }
-  if (viewDate === toDateStr(new Date())) { const n = nowMinutes(); lo = Math.min(lo, n); hi = Math.max(hi, n + 30); }
-  return { lo: Math.floor(lo / 60) * 60, hi: Math.min(DAY_MIN, Math.ceil(hi / 60) * 60) };
+  if (viewDate === toDateStr(new Date())) { const n = nowMinutes(); lo = Math.min(lo, n); hi = Math.max(hi, Math.min(DAY_MIN, n + 30)); }
+  return { lo: Math.floor(lo / 60) * 60, hi: Math.ceil(hi / 60) * 60 };
+}
+// Blöcke im sichtbaren Bereich: vom gezeigten Tag und, wenn die Leiste hineinreicht, vom Vortag/nächsten Tag
+function viewEntries(lo, hi) {
+  const res = [];
+  for (const off of [-DAY_MIN, 0, DAY_MIN]) {
+    if (off && (off < 0 ? lo >= 0 : hi <= DAY_MIN)) continue;
+    for (const e of dayEntries(addDays(viewDate, off / DAY_MIN)))
+      if (!off || (e.end + off > lo && e.start + off < hi)) res.push({ e, off });
+  }
+  return res;
 }
 
 // ---------- DOM ----------
@@ -315,11 +350,14 @@ function renderProjectMenu() {
 }
 async function deleteProject(id) {
   const pr = projById(id);
-  const used = state.entries.filter(e => e.project === id).length;
+  const used = state.entries.filter(e => partsOf(e).some(p => p.project === id)).length;
   if (!await askConfirm(`Projekt „${pr.name}“ löschen?` + (used ? ` ${used} Block/Blöcke bleiben unter „Projekte“ ohne Projektnamen erhalten.` : ''), 'Löschen')) return;
   snapshot();
   state.projects = state.projects.filter(p => p.id !== id);
-  for (const e of state.entries) if (e.project === id) e.project = null;
+  for (const e of state.entries) {
+    if (e.project === id) e.project = null;
+    for (const p of e.parts || []) if (p.project === id) p.project = null;
+  }
   if (state.project === id) state.project = null;
   save();
   render();
@@ -329,6 +367,7 @@ function renderTrack() {
   const { lo, hi } = viewRange();
   const span = hi - lo;
   const pct = m => ((m - lo) / span) * 100;
+  const dayTag = d => parseDate(d).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace(',', '');
   // Zoom: Breite pro Stunde; 0 = ganzer Bereich passt ins Fenster
   const scroller = $('trackScroll');
   const fitPx = scroller.clientWidth / (span / 60);
@@ -343,26 +382,40 @@ function renderTrack() {
   const labelStep = pxPerHour < 26 ? 180 : pxPerHour < 42 ? 120 : 60;
   for (let m = lo; m <= hi; m += 30) {
     const g = document.createElement('div');
-    g.className = 'gridline' + (m % 60 ? ' half' : '');
+    g.className = 'gridline' + (m % 60 ? ' half' : '') + (m % DAY_MIN === 0 && m > lo && m < hi ? ' midnight' : '');
     g.style.left = pct(m) + '%';
     track.appendChild(g);
     if (m % labelStep === 0) {
       const s = document.createElement('span');
-      s.textContent = `${m / 60}:00`;
+      // Mitternacht im Vortag/nächsten Tag: Datum statt 0:00
+      const mid = m % DAY_MIN === 0 && m > lo && m < hi;
+      s.textContent = mid ? dayTag(addDays(viewDate, m / DAY_MIN)) : m === DAY_MIN ? '24:00' : `${((m % DAY_MIN) + DAY_MIN) % DAY_MIN / 60}:00`;
+      if (mid) s.className = 'daylabel';
       s.style.left = pct(m) + '%';
       if (m === lo) s.style.transform = 'none';           // Randbeschriftung nicht abschneiden
       if (m === hi) s.style.transform = 'translateX(-100%)';
       scale.appendChild(s);
     }
   }
-  if (viewDate === toDateStr(new Date())) {
+  // Vortag/nächster Tag leicht abgesetzt
+  for (const [a, b] of [[lo, Math.min(hi, 0)], [Math.max(lo, DAY_MIN), hi]]) {
+    if (b <= a) continue;
+    const o = document.createElement('div');
+    o.className = 'othday';
+    o.style.left = pct(a) + '%'; o.style.width = (pct(b) - pct(a)) + '%';
+    track.appendChild(o);
+  }
+  const today = toDateStr(new Date());
+  for (const off of [-DAY_MIN, 0, DAY_MIN]) {
+    const nm = nowMinutes() + off;
+    if (addDays(viewDate, off / DAY_MIN) !== today || nm < lo || nm > hi) continue;
     const n = document.createElement('div');
     n.className = 'now';
-    n.style.left = pct(nowMinutes()) + '%';
+    n.style.left = pct(nm) + '%';
     track.appendChild(n);
   }
   const trackW = track.clientWidth;
-  for (const e of dayEntries(viewDate)) {
+  for (const { e, off } of viewEntries(lo, hi)) {
     const c = catById(e.cat);
     const el = document.createElement('div');
     // Schmale Blöcke: einzeilig mit „…“ (voller Text im Tooltip), sehr schmale nur Farbe
@@ -370,17 +423,40 @@ function renderTrack() {
     const size = wPx < 28 ? ' tiny' : wPx < 110 ? ' narrow' : '';
     el.className = 'block' + size + (e.id === selectedId ? ' selected' : '') + (e.id === state.running ? ' running' : '');
     el.dataset.id = e.id;
-    el.style.left = pct(e.start) + '%';
-    el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
-    el.style.background = entryColor(e);
+    el.dataset.off = off;
+    el.style.left = pct(e.start + off) + '%';
+    el.style.width = Math.max(0.3, pct(e.end + off) - pct(e.start + off)) + '%';
+    const pm = partMinutes(e), split = pm.length > 1;
+    el.style.background = split ? 'transparent' : entryColor(e);
     el.style.color = textOn(entryColor(e));
-    el.title = `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`;
-    el.innerHTML = `<span class="title"></span><span class="meta">${fmtTime(e.start)}–${fmtTime(e.end)} · ${fmtDur(e.end - e.start)}</span>
+    el.title = (off ? dayTag(e.date) + ': ' : '') + `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`
+      + (split ? '\n' + pm.map(x => `${partLabel(x.p)}: ${fmtDur(x.min)}`).join('\n') : '');
+    // Teile übereinander, dazwischen verschiebbare Trennlinien
+    let parts = '';
+    if (split) {
+      const sum = pm.reduce((a, x) => a + x.p.w, 0), blockH = track.clientHeight - 16;
+      let acc = 0;
+      pm.forEach((x, i) => {
+        const top = (acc / sum) * 100, h = (x.p.w / sum) * 100;
+        acc += x.p.w;
+        const cls = 'part' + (h / 100 * blockH < 17 ? ' thin' : '') + (e.id === selectedId && i === selectedPart ? ' psel' : '')
+          + (drag?.mode === 'preorder' && drag.id === e.id ? (i === drag.pi ? ' lifted' : i === drag.target ? ' ptarget' : '') : '');
+        parts += `<div class="${cls}" data-pi="${i}" style="top:${top}%;height:${h}%;background:${partColor(x.p)};color:${textOn(partColor(x.p))}">`
+          + (i ? `<span class="plabel">${esc(partLabel(x.p))} · ${fmtDur(x.min)}</span>` : '')
+          + `<button class="pdel" data-pi="${i}" title="Teil entfernen">×</button></div>`;
+        if (i) parts += `<div class="pdiv" data-pi="${i}" style="top:${top}%" title="Ziehen = Anteile verschieben"></div>`;
+      });
+    }
+    el.classList.toggle('split', split);
+    el.innerHTML = `${parts}<span class="title"></span><span class="meta">${fmtTime(e.start)}–${fmtTime(e.end)} · ${split ? fmtDur(pm[0].min).replace('\u00a0h', '') + ' von ' : ''}${fmtDur(e.end - e.start)}</span>
+      <button class="bmore" title="Mehr: Trennung einfügen">⋯</button>
       <div class="handle l" data-h="l"></div>${e.id === state.running ? '' : '<div class="handle r" data-h="r"></div>'}`;
     el.querySelector('.title').textContent = e.title || entryLabel(e);
     track.appendChild(el);
   }
   track._range = { lo, hi };
+  $('trackEarlier').disabled = lo <= RANGE_MIN * 60;
+  $('trackLater').disabled = hi >= RANGE_MAX * 60;
   // Beim Tageswechsel an die interessante Stelle scrollen (jetzt bzw. erster Block)
   if (scroller._date !== viewDate) {
     scroller._date = viewDate;
@@ -396,7 +472,7 @@ function renderWeek() {
   $('weekLabel').textContent = `${parseDate(mon).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })} – ${parseDate(sun).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`;
   const rows = $('weekRows');
   rows.innerHTML = '';
-  const lo = 6 * 60, hi = 20 * 60;
+  const lo = clamp(layout.dayFrom * 60, 0, DAY_MIN - 60), hi = clamp(layout.dayTo * 60, lo + 60, DAY_MIN);
   let wlo = lo, whi = hi;
   for (let i = 0; i < 7; i++) for (const e of dayEntries(addDays(mon, i))) { wlo = Math.min(wlo, e.start); whi = Math.max(whi, e.end); }
   wlo = Math.floor(wlo / 60) * 60; whi = Math.ceil(whi / 60) * 60;
@@ -413,7 +489,13 @@ function renderWeek() {
       const b = document.createElement('div');
       b.style.left = ((e.start - wlo) / (whi - wlo)) * 100 + '%';
       b.style.width = ((e.end - e.start) / (whi - wlo)) * 100 + '%';
-      b.style.background = entryColor(e);
+      const pm = partMinutes(e);
+      if (pm.length > 1) {
+        // Aufgeteilt: Streifen übereinander wie in der Zeitleiste
+        const sum = e.end - e.start || 1;
+        let acc = 0;
+        b.style.background = `linear-gradient(${pm.map(x => { const a = acc / sum * 100; acc += x.min; return `${partColor(x.p)} ${a}% ${acc / sum * 100}%`; }).join(', ')})`;
+      } else b.style.background = entryColor(e);
       mini.appendChild(b);
     }
     row.innerHTML = `<span class="label">${label}</span>`;
@@ -450,8 +532,7 @@ function renderMonth() {
     const parts = new Map();
     let total = 0;
     for (const e of dayEntries(date)) {
-      const c = entryColor(e);
-      parts.set(c, (parts.get(c) || 0) + (e.end - e.start));
+      for (const x of partMinutes(e)) { const c = partColor(x.p); parts.set(c, (parts.get(c) || 0) + x.min); }
       total += e.end - e.start;
     }
     if (inMonth) monthTotal += total;
@@ -476,12 +557,12 @@ function sums(dates) {
   const rows = new Map();
   const list = state.entries.filter(e => dates.includes(e.date))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  for (const e of list) {
-    const c = catById(e.cat);
-    const pr = c.id === 'projekte' ? projById(e.project) : null;
+  for (const e of list) for (const { p, min } of partMinutes(e)) {
+    const c = catById(p.cat);
+    const pr = c.id === 'projekte' ? projById(p.project) : null;
     const k = pr ? 'p:' + pr.id : c.id;
     if (!rows.has(k)) rows.set(k, pr ? { name: `${c.name} · ${pr.name}`, color: pr.color, v: 0 } : { name: c.name, color: c.color, v: 0 });
-    rows.get(k).v += e.end - e.start;
+    rows.get(k).v += min;
   }
   for (const c of CATEGORIES) {
     const used = c.id === 'projekte' ? [...rows.keys()].some(k => k === 'projekte' || k.startsWith('p:')) : rows.has(c.id);
@@ -532,8 +613,15 @@ function chooseCategory(id, project) {
   const sel = state.entries.find(e => e.id === selectedId);
   if (sel) {
     snapshot();
-    sel.cat = id;
-    sel.project = proj;
+    // Aufgeteilter Block: nur den gewählten Teil umfärben
+    if (sel.parts?.length > 1) {
+      const p = sel.parts[Math.min(selectedPart, sel.parts.length - 1)];
+      p.cat = id; p.project = proj;
+      syncHead(sel);
+    } else {
+      sel.cat = id;
+      sel.project = proj;
+    }
   } else if (state.running) {
     const run = state.entries.find(e => e.id === state.running);
     if (run && (run.cat !== id || (run.project || null) !== proj)) { stopTimer(); startTimer(); }
@@ -548,7 +636,7 @@ function startTimer() {
   const n = nowMinutes();
   snapshot();
   // Läuft der Timer direkt im Anschluss an einen Block derselben Kategorie, wird dieser verlängert.
-  const prev = dayEntries(today).find(e => e.cat === state.cat && (e.project || null) === currentProject() && n - e.end >= 0 && n - e.end < 1);
+  const prev = dayEntries(today).find(e => !e.parts && e.cat === state.cat && (e.project || null) === currentProject() && n - e.end >= 0 && n - e.end < 1);
   let e = prev;
   // Läuft gerade ein anderer Block über „jetzt“ hinaus, endet er jetzt.
   for (const o of dayEntries(today)) if (o !== e && o.start < n && o.end > n) o.end = Math.max(o.start, Math.floor(n));
@@ -581,6 +669,7 @@ function tick() {
       // Über Mitternacht: alten Block um 24:00 abschließen und heute weiterlaufen lassen.
       e.end = DAY_MIN;
       const n = { id: uid(), date: today, start: 0, end: nowMinutes(), cat: e.cat, project: e.project, title: e.title };
+      if (e.parts) n.parts = e.parts.map(p => ({ ...p }));
       state.entries.push(n);
       state.running = n.id;
     } else {
@@ -618,10 +707,25 @@ track.addEventListener('pointerdown', ev => {
   closeEditor(true);
   projMenuOpen = false;
   const blockEl = ev.target.closest('.block');
-  const m = minutesAt(ev.clientX);
+  const off = blockEl ? +blockEl.dataset.off || 0 : 0;
+  const m = minutesAt(ev.clientX) - off;
   if (blockEl) {
     const e = state.entries.find(x => x.id === blockEl.dataset.id);
     selectedId = e.id;
+    // Teil entfernen, Menü, Trennlinie ziehen
+    const pdel = ev.target.closest('.pdel');
+    if (pdel) { snapshot(); removePart(e, +pdel.dataset.pi); save(); render(); return; }
+    if (ev.target.closest('.bmore')) { render(); openBlockMenu(e); return; }
+    const pdiv = ev.target.closest('.pdiv');
+    const partIdx = partAt(e, blockEl, ev.clientY);
+    selectedPart = partIdx;
+    if (pdiv) {
+      snapshot();
+      const i = +pdiv.dataset.pi, ps = e.parts;
+      drag = { mode: 'pdiv', id: e.id, i, y0: ev.clientY, h: blockEl.clientHeight, wa: ps[i - 1].w, wb: ps[i].w, sum: ps.reduce((a, p) => a + p.w, 0), moved: false };
+      track.setPointerCapture(ev.pointerId);
+      return;
+    }
     // Doppelklick selbst erkennen, weil die Leiste jede Sekunde neu gezeichnet wird
     const dbl = lastClick.id === e.id && ev.timeStamp - lastClick.t < 400;
     lastClick = { id: e.id, t: ev.timeStamp };
@@ -630,21 +734,32 @@ track.addEventListener('pointerdown', ev => {
     const isRunning = e.id === state.running;
     if (isRunning && !h) { render(); return; } // laufenden Block nicht verschieben
     snapshot();
-    drag = { mode: h === 'l' ? 'left' : h === 'r' ? 'right' : 'move', id: e.id, x0: ev.clientX, m0: m, start0: e.start, end0: e.end, moved: false };
+    drag = { mode: h === 'l' ? 'left' : h === 'r' ? 'right' : 'move', id: e.id, off, x0: ev.clientX, m0: m, start0: e.start, end0: e.end, moved: false };
     // Nachbar auf der gezogenen Seite: wird mitverkleinert bzw. folgt, wenn er direkt anliegt
-    const others = dayEntries(viewDate).filter(o => o.id !== e.id && o.id !== state.running);
+    const others = dayEntries(e.date).filter(o => o.id !== e.id && o.id !== state.running);
     const nb = h === 'l' ? others.filter(o => o.end <= e.start + 0.5).pop()
              : h === 'r' ? others.find(o => o.start >= e.end - 0.5) : null;
     if (nb) drag.nb = { id: nb.id, start0: nb.start, end0: nb.end, touching: Math.abs(h === 'l' ? nb.end - e.start : nb.start - e.end) < 0.5 };
+    // Lange auf einen Teil drücken: Teil anheben und nach oben/unten auf einen anderen ziehen = tauschen
+    if (!h && e.parts?.length > 1) {
+      const pi = selectedPart;
+      drag.press = setTimeout(() => {
+        if (!drag || drag.id !== e.id || drag.moved) return;
+        drag.mode = 'preorder'; drag.pi = pi; drag.target = pi;
+        renderTrack();
+      }, 450);
+    }
   } else {
-    const g = gapAt(viewDate, m);
+    // Klick in den Vortag/nächsten Tag legt den Block dort an (Blöcke gehen nicht über Mitternacht)
+    const off = m < 0 ? -DAY_MIN : m >= DAY_MIN ? DAY_MIN : 0, date = addDays(viewDate, off / DAY_MIN);
+    const g = gapAt(date, m - off);
     if (!g) return;
     snapshot();
-    const anchor = clamp(snapTo(m), g.lo, g.hi);
-    const e = { id: uid(), date: viewDate, start: anchor, end: anchor, cat: state.cat, project: currentProject(), title: '' };
+    const anchor = clamp(snapTo(m - off), g.lo, g.hi);
+    const e = { id: uid(), date, start: anchor, end: anchor, cat: state.cat, project: currentProject(), title: '' };
     state.entries.push(e);
     selectedId = e.id;
-    drag = { mode: 'create', id: e.id, x0: ev.clientX, anchor, gap: g, moved: false };
+    drag = { mode: 'create', id: e.id, off, x0: ev.clientX, anchor, gap: g, moved: false };
   }
   track.setPointerCapture(ev.pointerId);
   render();
@@ -652,10 +767,26 @@ track.addEventListener('pointerdown', ev => {
 
 track.addEventListener('pointermove', ev => {
   if (!drag) return;
+  if (drag.mode === 'pdiv') {
+    const e = state.entries.find(x => x.id === drag.id);
+    const both = drag.wa + drag.wb, min = Math.min(Math.max(drag.sum * 0.12, 20 / drag.h * drag.sum), both / 2);
+    const wa = clamp(drag.wa + (ev.clientY - drag.y0) / drag.h * drag.sum, min, both - min);
+    e.parts[drag.i - 1].w = wa; e.parts[drag.i].w = both - wa;
+    drag.moved = true;
+    renderTrack();
+    return;
+  }
+  if (drag.mode === 'preorder') {
+    const el = track.querySelector(`.block[data-id="${drag.id}"]`);
+    if (!el) return;
+    const t = partAt(state.entries.find(x => x.id === drag.id), el, ev.clientY);
+    if (t !== drag.target) { drag.target = t; renderTrack(); }
+    return;
+  }
   if (Math.abs(ev.clientX - drag.x0) > 3) drag.moved = true;
   if (!drag.moved) return;
   const e = state.entries.find(x => x.id === drag.id);
-  const m = minutesAt(ev.clientX);
+  const m = minutesAt(ev.clientX) - drag.off;
   if (drag.mode === 'create') {
     const t = clamp(snapTo(m), drag.gap.lo, drag.gap.hi);
     e.start = Math.min(drag.anchor, t);
@@ -665,7 +796,7 @@ track.addEventListener('pointermove', ev => {
     const want = snapTo(drag.start0 + (m - drag.m0));
     // nächstgelegene freie Lücke, in die der Block passt
     let best = null;
-    for (const g of gaps(viewDate, e.id)) {
+    for (const g of gaps(e.date, e.id)) {
       if (g.hi - g.lo < dur) continue;
       const s = clamp(want, g.lo, g.hi - dur);
       if (!best || Math.abs(s - want) < Math.abs(best - want)) best = s;
@@ -674,12 +805,12 @@ track.addEventListener('pointermove', ev => {
   } else if (drag.mode === 'left') {
     const nb = drag.nb && state.entries.find(x => x.id === drag.nb.id);
     // in den Nachbarn hinein darf man ziehen, bis von ihm noch ein Rasterschritt übrig ist
-    const lo = nb ? drag.nb.start0 + state.snap : (gapAt(viewDate, drag.start0, e.id)?.lo ?? 0);
+    const lo = nb ? drag.nb.start0 + state.snap : (gapAt(e.date, drag.start0, e.id)?.lo ?? 0);
     e.start = clamp(snapTo(m), Math.min(lo, e.end - state.snap), e.end - state.snap);
     if (nb) nb.end = drag.nb.touching ? e.start : Math.min(drag.nb.end0, e.start);
   } else if (drag.mode === 'right') {
     const nb = drag.nb && state.entries.find(x => x.id === drag.nb.id);
-    const hi = nb ? drag.nb.end0 - state.snap : (gapAt(viewDate, drag.end0, e.id)?.hi ?? DAY_MIN);
+    const hi = nb ? drag.nb.end0 - state.snap : (gapAt(e.date, drag.end0, e.id)?.hi ?? DAY_MIN);
     e.end = clamp(snapTo(m), e.start + state.snap, Math.max(hi, e.start + state.snap));
     if (nb) nb.start = drag.nb.touching ? e.end : Math.max(drag.nb.start0, e.end);
   }
@@ -688,7 +819,21 @@ track.addEventListener('pointermove', ev => {
 
 function endDrag() {
   if (!drag) return;
+  clearTimeout(drag.press);
   const e = state.entries.find(x => x.id === drag.id);
+  if (drag.mode === 'preorder' || drag.mode === 'pdiv') {
+    // Tauschen: die beiden Teile tauschen ihre Kategorien, die Anteile bleiben an ihrem Platz
+    if (drag.mode === 'preorder' && e && drag.target !== drag.pi) {
+      const a = e.parts[drag.pi], b = e.parts[drag.target];
+      [a.cat, a.project, b.cat, b.project] = [b.cat, b.project, a.cat, a.project];
+      syncHead(e);
+      selectedPart = drag.target;
+    } else if (drag.mode === 'preorder' || !drag.moved) { history.pop(); renderHistoryButtons(); }
+    drag = null;
+    save();
+    render();
+    return;
+  }
   if (drag.mode === 'create' && e) {
     if (!drag.moved || e.end - e.start < state.snap) {
       // Einfacher Klick: Block mit 1 Stunde (soweit Platz ist)
@@ -712,6 +857,59 @@ track.addEventListener('pointerup', () => {
 });
 track.addEventListener('pointercancel', endDrag);
 
+
+// ---------- Blöcke aufteilen ----------
+// Neue Trennung: der unterste Teil gibt die Hälfte ab; der neue Teil bekommt die gewählte Kategorie
+// (oder die nächste, die im Block noch nicht vorkommt) und ist gleich markiert, ein Klick oben färbt ihn um.
+function splitBlock(e) {
+  snapshot();
+  const ps = partsOf(e).map(p => ({ ...p }));
+  let cat = state.cat, project = currentProject();
+  if (ps.some(p => p.cat === cat && (p.project || null) === (project || null))) {
+    cat = (CATEGORIES.find(c => !ps.some(p => p.cat === c.id)) || CATEGORIES[0]).id;
+    project = null;
+  }
+  const last = ps[ps.length - 1];
+  last.w /= 2;
+  ps.push({ cat, project, w: last.w });
+  e.parts = ps;
+  syncHead(e);
+  selectedId = e.id; selectedPart = ps.length - 1;
+  save();
+  render();
+}
+function removePart(e, i) {
+  const ps = partsOf(e).map(p => ({ ...p }));
+  if (ps.length < 2) return;
+  const [gone] = ps.splice(i, 1);
+  (ps[i - 1] || ps[0]).w += gone.w;
+  e.parts = ps;
+  syncHead(e);
+  selectedPart = 0;
+}
+const blockMenu = document.createElement('div');
+blockMenu.className = 'blockmenu';
+blockMenu.hidden = true;
+document.body.append(blockMenu);
+function openBlockMenu(e) {
+  const btn = track.querySelector(`.block[data-id="${e.id}"] .bmore`);
+  if (!btn) return;
+  const r = btn.getBoundingClientRect();
+  blockMenu.innerHTML = '<button data-a="split">Trennung einfügen</button>'
+    + (e.parts?.length > 1 ? '<button data-a="join">Aufteilung entfernen</button>' : '');
+  blockMenu.hidden = false;
+  blockMenu.style.left = Math.max(8, Math.min(innerWidth - blockMenu.offsetWidth - 8, r.right - blockMenu.offsetWidth)) + 'px';
+  blockMenu.style.top = (r.bottom + 4 + blockMenu.offsetHeight > innerHeight ? r.top - 4 - blockMenu.offsetHeight : r.bottom + 4) + 'px';
+  blockMenu.onclick = ev => {
+    const a = ev.target.dataset.a;
+    if (!a) return;
+    blockMenu.hidden = true;
+    if (a === 'split') splitBlock(e);
+    if (a === 'join') { snapshot(); delete e.parts; selectedPart = 0; save(); render(); }
+  };
+}
+document.addEventListener('pointerdown', ev => { if (!blockMenu.hidden && !blockMenu.contains(ev.target)) blockMenu.hidden = true; }, true);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !blockMenu.hidden) { ev.stopPropagation(); blockMenu.hidden = true; } }, true);
 
 // ---------- Umbenennen ----------
 let editingId = null;
@@ -792,7 +990,7 @@ $('copyYesterday').onclick = async () => {
   for (const e of dayEntries(src)) {
     const g = gapAt(viewDate, e.start);
     if (!g || g.hi < e.end || e.start === g.hi) continue;
-    state.entries.push({ ...e, id: uid(), date: viewDate });
+    state.entries.push({ ...e, id: uid(), date: viewDate, ...(e.parts ? { parts: e.parts.map(p => ({ ...p })) } : {}) });
   }
   save();
   render();
@@ -815,7 +1013,10 @@ async function download(name, text, type) {
 $('exportCsv').onclick = () => {
   const rows = [['Datum', 'Start', 'Ende', 'Dauer (h)', 'Kategorie', 'Projekt', 'Bezeichnung']];
   for (const e of [...state.entries].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)) {
-    rows.push([e.date, fmtTime(e.start), fmtTime(e.end), ((e.end - e.start) / 60).toFixed(2).replace('.', ','), catById(e.cat).name, (e.cat === 'projekte' && projById(e.project)?.name) || '', e.title || '']);
+    // Aufgeteilte Blöcke: eine Zeile je Teil mit seinem Anteil an der Dauer
+    for (const { p, min } of partMinutes(e)) {
+      rows.push([e.date, fmtTime(e.start), fmtTime(e.end), (min / 60).toFixed(2).replace('.', ','), catById(p.cat).name, (p.cat === 'projekte' && projById(p.project)?.name) || '', e.title || '']);
+    }
   }
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   download('zeitjournal.csv', '﻿' + csv, 'text/csv');
@@ -841,13 +1042,17 @@ $('importJson').onchange = async ev => {
 
 // ---------- Bereiche größer/kleiner ziehen ----------
 const LAYOUT_KEY = 'zeitjournal.layout';
-const LAYOUT_DEFAULT = { trackH: 120, monthW: 340, hourPx: 0 };
+const RANGE_MIN = -12, RANGE_MAX = 36; // Stunden relativ zum gezeigten Tag
+const LAYOUT_DEFAULT = { trackH: 120, monthW: 340, hourPx: 0, dayFrom: 6, dayTo: 24 };
 let layout = { ...LAYOUT_DEFAULT };
 try { Object.assign(layout, JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}); } catch (e) { /* Standard */ }
 function applyLayout() {
   layout.trackH = clamp(Math.round(layout.trackH), 70, 520);
   layout.monthW = clamp(Math.round(layout.monthW), 240, 760);
   layout.hourPx = Math.max(0, Number(layout.hourPx) || 0);
+  // Bereich darf bis zu einen halben Tag in den Vortag bzw. in den nächsten Tag reichen
+  layout.dayFrom = clamp(Math.round(Number(layout.dayFrom ?? 6)), RANGE_MIN, RANGE_MAX - 1);
+  layout.dayTo = clamp(Math.round(Number(layout.dayTo ?? 24)), layout.dayFrom + 1, RANGE_MAX);
   document.documentElement.style.setProperty('--track-h', layout.trackH + 'px');
   document.documentElement.style.setProperty('--month-w', layout.monthW + 'px');
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (e) { /* ignorieren */ }
@@ -907,6 +1112,33 @@ function zoomTimeline(factor, clientX) {
 $('zoomIn').onclick = () => zoomTimeline(1.6);
 $('zoomOut').onclick = () => zoomTimeline(1 / 1.6);
 $('zoomFit').onclick = () => { layout.hourPx = 0; applyLayout(); renderTrack(); };
+// Stundenbereich der Zeitleiste
+const rangeLabel = h => h < 0 ? `Vortag ${h + 24}:00` : h > 24 ? `+1 Tag ${h - 24}:00` : `${h}:00`;
+for (let h = RANGE_MIN; h <= RANGE_MAX; h++) {
+  if (h < RANGE_MAX) $('dayFrom').add(new Option(rangeLabel(h), h));
+  if (h > RANGE_MIN) $('dayTo').add(new Option(rangeLabel(h), h));
+}
+const showRange = () => {
+  $('dayFrom').value = layout.dayFrom; $('dayTo').value = layout.dayTo;
+};
+const setRange = (from, to) => {
+  layout.dayFrom = from; layout.dayTo = Math.max(to, from + 1);
+  applyLayout(); showRange(); renderTrack(); renderWeek();
+};
+// Pfeile links/rechts neben der Leiste: Bereich jeweils um 2 Stunden verlängern und dorthin scrollen
+$('trackEarlier').onclick = () => {
+  const { lo, hi } = viewRange();
+  setRange(Math.min(layout.dayFrom, lo / 60) - 2, Math.max(layout.dayTo, hi / 60));
+  $('trackScroll').scrollLeft = 0;
+};
+$('trackLater').onclick = () => {
+  const { lo, hi } = viewRange();
+  setRange(Math.min(layout.dayFrom, lo / 60), Math.max(layout.dayTo, hi / 60) + 2);
+  $('trackScroll').scrollLeft = $('trackScroll').scrollWidth;
+};
+$('dayFrom').onchange = ev => setRange(Number(ev.target.value), layout.dayTo);
+$('dayTo').onchange = ev => setRange(layout.dayFrom, Number(ev.target.value));
+showRange();
 $('trackScroll').addEventListener('wheel', ev => {
   if (!ev.ctrlKey && !ev.metaKey) return;
   ev.preventDefault();
@@ -984,7 +1216,9 @@ track.addEventListener('contextmenu', ev => {
   ev.preventDefault();
   const blockEl = ev.target.closest('.block');
   const e = blockEl && state.entries.find(x => x.id === blockEl.dataset.id);
-  const cat = e ? e.cat : state.cat, project = e ? e.project : state.project;
+  const pEl = ev.target.closest('.part');
+  const part = e && pEl ? partsOf(e)[+pEl.dataset.pi] : null;
+  const cat = part ? part.cat : e ? e.cat : state.cat, project = part ? part.project : e ? e.project : state.project;
   openColorMenu(ev.clientX, ev.clientY, cat === 'projekte' && projById(project) ? { type: 'proj', id: project } : { type: 'cat', id: cat });
 });
 
