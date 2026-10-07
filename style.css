@@ -92,17 +92,32 @@ button:hover, .filebtn:hover { border-color: var(--line-strong); }
 .startstop.running { background: var(--danger); border-color: var(--danger); }
 
 .palette {
-  display: flex;
-  gap: 8px;
+  /* Einheitliches Raster: alle Kategorien gleich breit und gleich hoch */
   padding: 12px 24px;
-  flex-wrap: wrap;
+  container-type: inline-size;
+  position: relative;
+  z-index: 5;   /* Projektmenü liegt über der Zeitleiste */
 }
+/* Schmaler: immer volle Reihen. Drei Spalten mit „Projekte“ doppelt breit, oder zwei Spalten mit
+   „Projekte“ über die ganze Breite und den anderen vier als 2 × 2 */
+.cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+@container (max-width: 940px) { .cats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .cats > .cat-group { grid-column: span 2; } }
+@container (max-width: 560px) { .cats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cats > .cat-group { grid-column: 1 / -1; } }
+@container (max-width: 240px) { .cats { grid-template-columns: 1fr; } }
 .cat {
   display: flex;
   align-items: center;
   gap: 8px;
   border-width: 2px;
+  height: 40px;
+  min-width: 0;
+  padding: 0 12px;
+  position: relative;
+  text-align: left;
 }
+.cat .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat .dot { flex: none; }
+.cat kbd { flex: none; }
 .cat .dot { width: 12px; height: 12px; border-radius: 50%; }
 .cat.active { border-color: var(--text); font-weight: 600; }
 .cat kbd {
@@ -305,16 +320,19 @@ body.resizing, body.resizing * { cursor: inherit !important; user-select: none; 
 .theme-toggle { min-width: 44px; }
 
 /* Projekt-Auswahl */
-.cat-group { display: flex; position: relative; }
-.cat-group .cat { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.cat-group { display: flex; position: relative; min-width: 0; }
+.cat-group .cat { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .cat-group .cat-more {
   border-width: 2px;
   border-left-width: 0;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  padding: 6px 8px;
+  padding: 0;
+  width: 34px;
+  height: 40px;
+  flex: none;
 }
-.cat .sub { color: var(--muted); font-weight: 500; }
+.cat .sub { color: var(--muted); font-weight: 500; margin-left: 5px; }
 .projmenu {
   position: absolute;
   top: calc(100% + 6px);
@@ -485,6 +503,9 @@ html.panel.narrow .tile { padding-bottom: 10px; }
   box-shadow: 0 4px 14px rgba(0,0,0,.18);
 }
 .tile-body { flex: 1 1 0; min-height: 0; overflow: auto; }
+/* Offenes Projektmenü darf über den Kachelrand hinausragen */
+.tile:has(.projmenu) { overflow: visible; z-index: 50; }
+.tile:has(.projmenu) > .tile-body { overflow: visible; }
 .tile-bar {
   display: flex;
   align-items: center;
@@ -507,7 +528,7 @@ html.panel.narrow .tile { padding-bottom: 10px; }
 .tile-body > .topbar .date-label { min-width: 0; }
 .tile-body > .palette, .tile-body > .footer { padding: 10px 12px; }
 .tile-body > section { padding: 12px; }
-.tile-body > .summary > h2 { display: none; }
+.tile-body > .summary > h2, .tile-body > .notes > h2 { display: none; }
 html.desktop .lock { background: transparent; pointer-events: none; }
 html.desktop .lock-card { pointer-events: auto; }
 html.desktop .dialog-backdrop { background: transparent; }
@@ -553,7 +574,7 @@ html.panel.narrow .tile-body { flex: none; overflow: visible; }
 html.panel.narrow .board-edge { display: none; }
 
 /* ---------- Farbwahl ---------- */
-.cat .dots { color: var(--muted); font-weight: 700; padding: 0 2px; margin-left: -2px; opacity: 0; border-radius: 4px; }
+.cat .dots { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; padding: 0 5px; opacity: 0; border-radius: 4px; background: var(--panel); }
 .cat:hover .dots, .cat:focus-visible .dots { opacity: 1; }
 .cat .dots:hover { color: var(--text); background: var(--hover); }
 .colormenu {
@@ -594,8 +615,6 @@ html.panel.narrow .board-edge { display: none; }
 .sync-note:empty { display: none; }
 #confirmDialog { z-index: 160; }   /* Rückfragen liegen über anderen Dialogen */
 .sumrow.zero { color: var(--muted); }
-.sumrow.subrow { font-size: 12px; color: var(--muted); padding: 1px 0; }
-.sumrow.subrow > span:first-child { padding-left: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sumrow > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Schmale Summen-Spalte (z. B. im Desktop-Modul): ohne Balken, nur Name und Zeit */
 .summary-grid > div { container-type: inline-size; min-width: 0; }
@@ -603,3 +622,24 @@ html.panel.narrow .board-edge { display: none; }
   .sumrow { grid-template-columns: minmax(0, 1fr) auto; }
   .sumrow .sumbar, .sumrow.sumtotal > span:nth-child(2) { display: none; }
 }
+
+/* ---------- Notizen ---------- */
+.notes { display: flex; flex-direction: column; }
+.notes textarea {
+  width: 100%; min-height: 140px; resize: vertical; box-sizing: border-box;
+  font: inherit; font-size: 14px; line-height: 1.5; color: var(--text);
+  background: var(--track); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.notes textarea::placeholder { color: var(--muted); }
+.notes textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* In der Kachel füllt das Feld den ganzen Platz */
+.tile-body > .notes { height: 100%; box-sizing: border-box; }
+.tile-body > .notes textarea { flex: 1; min-height: 0; resize: none; }
+html.narrow .tile:not(.sized) .notes textarea { flex: none; min-height: 140px; }
+
+/* ---------- Module verschieben ---------- */
+.tile-bar { cursor: grab; touch-action: none; user-select: none; }
+html.board-dragging .tile-bar { cursor: grabbing; }
+.tile.moving { opacity: .45; }
+.drop-mark { position: absolute; z-index: 40; pointer-events: none; border-radius: 3px; background: var(--accent); }
+.drop-mark.swap { background: color-mix(in srgb, var(--accent) 14%, transparent); border: 2px solid var(--accent); border-radius: 12px; box-sizing: border-box; }

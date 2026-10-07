@@ -65,12 +65,13 @@
     projects: state.projects,
     catColors: state.catColors || {},
     running: state.running || null,
+    notes: state.notes || '',
   });
   // Das Ende des laufenden Blocks wächst jede Sekunde; das allein ist keine Änderung
   const norm = (e, running) => (e && e.id === running ? { ...e, end: null } : e);
   const fingerprint = d => JSON.stringify({
     e: [...d.entries].sort((a, b) => (a.id < b.id ? -1 : 1)).map(e => norm(e, d.running)),
-    p: d.projects, c: d.catColors, r: d.running,
+    p: d.projects, c: d.catColors, r: d.running, n: d.notes || '',
   });
   const byId = list => new Map(list.map(x => [x.id, x]));
   const same = (a, b, running) => JSON.stringify(norm(a, running)) === JSON.stringify(norm(b, running));
@@ -91,16 +92,20 @@
       if (local.catColors[k]) out.catColors[k] = local.catColors[k]; else delete out.catColors[k];
     }
     if (local.running !== (base.running || null)) out.running = local.running;
+    // Notizen: hier geändert gewinnt, sonst der Serverstand
+    if ((local.notes || '') !== (base.notes || '')) out.notes = local.notes || '';
     if (out.running && !out.entries.some(e => e.id === out.running)) out.running = null;
     return out;
   }
   function apply(d) {
     const sel = selectedId;
-    Object.assign(state, { entries: d.entries, projects: d.projects, catColors: d.catColors || {}, running: d.running || null });
+    Object.assign(state, { entries: d.entries, projects: d.projects, catColors: d.catColors || {}, running: d.running || null,
+      notes: typeof d.notes === 'string' ? d.notes : (state.notes || '') });
     if (state.project && !projById(state.project)) state.project = null;
     if (sel && !state.entries.some(e => e.id === sel)) selectedId = null;
     history.length = 0; future.length = 0;   // Rückgängig würde sonst Änderungen anderer Geräte überschreiben
     render();
+    window.zeitjournalDesktop?.repaint?.();
   }
 
   // ---------- Ablauf ----------
@@ -144,19 +149,22 @@
   // Nicht bei jedem Speichern neu warten: die laufende Uhr speichert jede Sekunde
   // Alle paar Sekunden nur die Revision fragen (winzige Antwort); geholt wird erst, wenn sich etwas geändert hat.
   // Fehlt die Funktion zj_rev auf dem Server (ältere Einrichtung), wird wie früher alle 30 Sekunden ganz abgeglichen.
-  let revMissing = false, lastFull = 0;
+  let revMissing = false, revOk = false, lastFull = 0;
   async function poll() {
-    // Die Desktop-App liegt dauerhaft auf dem Bildschirm und gilt verdeckt oft als „versteckt“: dort immer abgleichen
-    if (!active() || busy || (document.visibilityState === 'hidden' && !window.zeitjournalDesktop)) return;
+    // Auch „versteckt“ weiter fragen: Windows meldet ein sichtbares Browserfenster als versteckt, sobald ein
+    // anderes Fenster (z. B. die Desktop-App über den ganzen Bildschirm) davor liegt. Die Abfrage ist winzig.
+    if (!active() || busy) return;
     if (dirty()) return syncNow();
     if (revMissing) { if (Date.now() - lastFull >= FULL_MS) { lastFull = Date.now(); syncNow(); } return; }
     try {
       const { id } = await keys(state.sync.code);
       const rev = Number(await rpc('zj_rev', { p_id: id }));
+      revOk = true;
       if (lastErr) { lastErr = ''; renderSync(); }
       if (rev !== state.sync.rev) syncNow();
     } catch (e) {
-      if (e.status === 404) { revMissing = true; syncNow(); }
+      // Fehlt zj_rev oder darf anon sie nicht aufrufen (alte Einrichtung): auf den langsamen Abgleich ausweichen
+      if (e.status >= 400 && e.status < 500 && e.status !== 429) { revMissing = true; syncNow(); }
       else { lastErr = navigator.onLine === false ? 'offline' : 'Fehler'; renderSync(); }
     }
   }
@@ -192,7 +200,7 @@
     btn.textContent = '☁';
     btn.title = !on ? 'Abgleich einrichten'
       : lastErr ? `Abgleich: ${lastErr === 'offline' ? 'keine Verbindung' : 'hat nicht geklappt'}, neuer Versuch läuft`
-      : lastOk ? `Abgeglichen um ${new Date(lastOk).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : 'Abgleich läuft';
+      : lastOk ? `Abgeglichen um ${new Date(lastOk).toLocaleTimeString('de-DE')}${revMissing ? ' (langsamer Abgleich, siehe ☁)' : ''}` : 'Abgleich läuft';
   }
   setInterval(renderSync, 30000);
 
@@ -205,6 +213,7 @@
       <p>Dieses Gerät gleicht seine Zeiten mit allen Geräten ab, die denselben Sync-Schlüssel haben.</p>
       <label>Sync-Schlüssel <input class="sync-code" readonly></label>
       <p class="sync-note">Auf dem anderen Gerät unter ☁ „Schlüssel eingeben“ wählen und diesen Schlüssel einfügen. Wer den Schlüssel hat, kann die Zeiten lesen.</p>
+      <p class="sync-note sync-mode"></p>
       <div class="dialog-actions"><button data-a="off">Abgleich beenden</button><button data-a="copy">Kopieren</button><button data-a="close" class="primary">Fertig</button></div>
     </div>
     <div class="sync-off">
@@ -224,6 +233,10 @@
     q('.sync-enter').hidden = true; q('[data-a=join]').hidden = true; q('.sync-choice').hidden = false;
     q('.sync-msg').textContent = '';
     if (on) q('.sync-code').value = state.sync.code;
+    const t = lastOk ? ` Zuletzt abgeglichen um ${new Date(lastOk).toLocaleTimeString('de-DE')}.` : '';
+    q('.sync-mode').textContent = revMissing
+      ? 'Langsamer Abgleich, nur alle 30 Sekunden: Auf dem Server fehlt die Funktion zj_rev. Bitte docs/sync-setup.sql in Supabase noch einmal ausführen.' + t
+      : revOk ? 'Schneller Abgleich alle 5 Sekunden ist aktiv.' + t : t.trim();
     dlg.hidden = false;
   }
   btn.onclick = openDialog;

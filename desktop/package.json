@@ -18,7 +18,7 @@
   "build": {
     "appId": "de.suetterlin.zeitjournal",
     "productName": "Zeitjournal",
-    "files": ["main.js", "preload.js", "web/**", "build/icon.png"],
+    "files": ["main.js", "preload.js", "build-info.json", "web/**", "build/icon.png"],
     "directories": { "output": "dist", "buildResources": "build" },
     "win": { "target": "nsis", "icon": "build/icon.png" },
     "nsis": {

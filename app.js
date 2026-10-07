@@ -33,6 +33,7 @@ const state = {
   project: null,    // gewähltes Projekt für neue Blöcke
   snap: 15,
   catColors: {},   // selbst gewählte Farben der Kategorien
+  notes: '',        // freies Notizfeld
 };
 const projById = id => state.projects.find(p => p.id === id) || null;
 // Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
@@ -88,7 +89,7 @@ async function unlockWith(pw) {
   const salt = fromB64(rec.salt);
   const key = await deriveKey(pw, salt);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.data)); // wirft bei falschem Passwort
-  Object.assign(state, { catColors: {}, sync: undefined }, JSON.parse(td.decode(plain)));
+  Object.assign(state, { catColors: {}, notes: '', sync: undefined }, JSON.parse(td.decode(plain)));
   if (!Array.isArray(state.projects)) state.projects = [];
   cryptoKey = key; cryptoSalt = salt;
 }
@@ -196,6 +197,7 @@ function render() {
   renderMonth();
   renderWeek();
   renderSummary();
+  renderNotes();
 }
 
 function renderHeader() {
@@ -215,15 +217,17 @@ function renderHeader() {
 }
 
 function renderPalette() {
-  const p = $('palette');
-  p.innerHTML = '';
+  // Inneres Raster, damit sich die Spaltenzahl nach der Breite der Kachel richten kann
+  const p = document.createElement('div');
+  p.className = 'cats';
+  $('palette').replaceChildren(p);
   CATEGORIES.forEach((c, i) => {
     const active = state.cat === c.id;
     const b = document.createElement('button');
     b.className = 'cat' + (active ? ' active' : '');
     b.style.borderColor = active ? c.color : '';
     const proj = c.id === 'projekte' ? projById(state.project) : null;
-    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span>${c.name}<span class="sub"></span><kbd>${i + 1}</kbd><span class="dots" title="Farbe ändern">⋯</span>`;
+    b.innerHTML = `<span class="dot" style="background:${proj ? proj.color : c.color}"></span><span class="name">${c.name}<span class="sub"></span></span><kbd>${i + 1}</kbd><span class="dots" title="Farbe ändern">⋯</span>`;
     if (proj) b.querySelector('.sub').textContent = '· ' + proj.name;
     b.title = 'Kategorie wählen. Ist ein Block markiert, wird er umgefärbt. Läuft die Uhr, wird auf diese Kategorie gewechselt.';
     b.onclick = ev => {
@@ -253,11 +257,6 @@ function renderProjectMenu() {
   const m = document.createElement('div');
   m.className = 'projmenu';
   if (!state.projects.length) m.insertAdjacentHTML('beforeend', '<div class="empty">Noch keine Projekte angelegt.</div>');
-  const none = document.createElement('div');
-  none.className = 'item' + (state.cat === 'projekte' && !state.project ? ' active' : '');
-  none.innerHTML = `<span class="dot" style="background:${catById('projekte').color}"></span><span class="name">Ohne Projekt</span>`;
-  none.onclick = () => { projMenuOpen = false; chooseCategory('projekte', null); };
-  m.appendChild(none);
   for (const pr of state.projects) {
     const it = document.createElement('div');
     it.className = 'item' + (state.cat === 'projekte' && state.project === pr.id ? ' active' : '');
@@ -291,7 +290,8 @@ function renderProjectMenu() {
       if (a === 'del') { deleteProject(pr.id); return; }
       if (renamingProject === pr.id) return;
       projMenuOpen = false;
-      chooseCategory('projekte', pr.id);
+      // Nochmal auf das gewählte Projekt: wieder ohne Projekt
+      chooseCategory('projekte', state.cat === 'projekte' && state.project === pr.id ? null : pr.id);
     };
     m.appendChild(it);
   }
@@ -469,8 +469,8 @@ function renderMonth() {
 $('prevMonth').onclick = () => { monthView = shiftMonth(monthView, -1); renderMonth(); };
 $('nextMonth').onclick = () => { monthView = shiftMonth(monthView, 1); renderMonth(); };
 
-// Summen in der Reihenfolge ihres ersten Blocks in der Zeitleiste. „Projekte“ bleibt eine Gruppe:
-// die Zeile steht dort, wo der erste Projektblock vorkommt, die einzelnen Projekte eingerückt darunter.
+// Summen in der Reihenfolge ihres ersten Blocks in der Zeitleiste. Jedes Projekt ist eine eigene Zeile
+// („Projekte · 01“), damit z. B. 01, IT Frankfurt, 02 genau so untereinander stehen wie am Tag.
 // Kategorien ohne Zeit stehen mit 0:00 am Ende.
 function sums(dates) {
   const rows = new Map();
@@ -478,16 +478,15 @@ function sums(dates) {
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   for (const e of list) {
     const c = catById(e.cat);
-    if (!rows.has(c.id)) rows.set(c.id, { name: c.name, color: c.color, v: 0, subs: new Map() });
-    const row = rows.get(c.id);
-    row.v += e.end - e.start;
-    if (c.id !== 'projekte') continue;
-    const pr = projById(e.project);
-    const k = pr ? pr.id : '';
-    if (!row.subs.has(k)) row.subs.set(k, { name: pr ? pr.name : 'ohne Projekt', color: pr ? pr.color : c.color, v: 0 });
-    row.subs.get(k).v += e.end - e.start;
+    const pr = c.id === 'projekte' ? projById(e.project) : null;
+    const k = pr ? 'p:' + pr.id : c.id;
+    if (!rows.has(k)) rows.set(k, pr ? { name: `${c.name} · ${pr.name}`, color: pr.color, v: 0 } : { name: c.name, color: c.color, v: 0 });
+    rows.get(k).v += e.end - e.start;
   }
-  for (const c of CATEGORIES) if (!rows.has(c.id)) rows.set(c.id, { name: c.name, color: c.color, v: 0, subs: new Map() });
+  for (const c of CATEGORIES) {
+    const used = c.id === 'projekte' ? [...rows.keys()].some(k => k === 'projekte' || k.startsWith('p:')) : rows.has(c.id);
+    if (!used) rows.set(c.id, { name: c.name, color: c.color, v: 0 });
+  }
   return [...rows.values()];
 }
 const esc = t => t.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
@@ -497,12 +496,7 @@ function renderSums(el, rows) {
     <div class="sumrow ${cls}"><span>${esc(r.name)}</span>
       <div class="sumbar"><div style="width:${total ? (r.v / total) * 100 : 0}%;background:${r.color}"></div></div>
       <span class="v">${fmtDur(r.v)}</span></div>`;
-  el.innerHTML = rows.map(r => {
-    // Nur „ohne Projekt“ allein braucht keine Unterzeile
-    const subs = [...r.subs.values()];
-    const showSubs = subs.length > 1 || (subs.length === 1 && subs[0].name !== 'ohne Projekt');
-    return row(r.v ? '' : 'zero', r) + (showSubs ? subs.map(x => row('subrow', x)).join('') : '');
-  }).join('') +
+  el.innerHTML = rows.map(r => row(r.v ? '' : 'zero', r)).join('') +
     `<div class="sumrow sumtotal"><span>Gesamt</span><span></span><span class="v">${fmtDur(total)}</span></div>`;
 }
 function renderSummary() {
@@ -510,6 +504,24 @@ function renderSummary() {
   const mon = mondayOf(viewDate);
   renderSums($('sumWeek'), sums([0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i))));
 }
+
+// ---------- Notizen ----------
+// Tippen speichert kurz danach; kommt ein neuer Stand von einem anderen Gerät, bleibt die Schreibmarke stehen
+function renderNotes() {
+  const t = $('notesInput');
+  const v = state.notes || '';
+  if (t.value === v) return;
+  const { selectionStart: a, selectionEnd: b } = t;
+  t.value = v;
+  if (document.activeElement === t) t.setSelectionRange(Math.min(a, v.length), Math.min(b, v.length));
+}
+let notesTimer = null;
+$('notesInput').addEventListener('input', ev => {
+  state.notes = ev.target.value;
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(save, 400);
+});
+$('notesInput').addEventListener('blur', () => { if (notesTimer) { clearTimeout(notesTimer); notesTimer = null; save(); } });
 
 // ---------- Aktionen ----------
 // project: bei „Projekte“ das gewählte Projekt (null = ohne), sonst undefined
@@ -742,7 +754,7 @@ $('editorInput').addEventListener('blur', () => closeEditor(true));
 // ---------- Tastatur ----------
 document.addEventListener('keydown', ev => {
   if (!cryptoKey || !$('lock').hidden) return;
-  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT' || ev.target.tagName === 'TEXTAREA') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
   if (ev.key === ' ') { ev.preventDefault(); $('startStop').click(); }
@@ -1155,10 +1167,11 @@ $('lockForgot').onclick = async () => {
 };
 // Sperren ohne Neuladen: entschlüsselte Daten aus dem Speicher werfen und das Ziffernfeld zeigen
 async function lockApp() {
+  if (notesTimer) { clearTimeout(notesTimer); notesTimer = null; save(); }
   await flushSave();
   cryptoKey = null;
   cryptoSalt = null;
-  Object.assign(state, { entries: [], projects: [], running: null, catColors: {}, sync: undefined });
+  Object.assign(state, { entries: [], projects: [], running: null, catColors: {}, notes: '', sync: undefined });
   closeColorMenu();
   history.length = 0;
   future.length = 0;
