@@ -3,13 +3,13 @@
 // Anordnung (Variante B): oben Uhr | Kategorien, dann die Zeitleiste quer, darunter Monat | Summen, darunter Woche | Notizen.
 // Zwischenräume ziehen verteilt den Platz zwischen Nachbarmodulen, Ränder und Ecken ziehen ändern die ganze App.
 // Ein Modul schließt man mit dem × oben rechts; ausgeblendete Module stehen als „+ Name“ in der Kopfleiste.
-// Im Browser tut diese Datei nichts: nur die Desktop-Hülle stellt window.zeitjournalDesktop bereit.
-// Im Claude-Seitenfenster (window.zeitjournalPanel) gibt es dieselben Module, aber über die ganze Breite
+// Module lassen sich an ihrer Titelleiste verschieben: neben ein anderes Modul, als eigene Zeile darüber oder
+// darunter, oder auf ein Modul (dann tauschen beide den Platz). Es bleibt immer ein geschlossener Block.
+// Auf der Webseite und im Claude-Seitenfenster gibt es dieselben Module, aber über die ganze Breite
 // und auf normalem Hintergrund; ist es schmal, stehen alle Module untereinander.
 (() => {
-  const PANEL = !window.zeitjournalDesktop && !!window.zeitjournalPanel;
-  const host = window.zeitjournalDesktop || (PANEL && { setInteractive() {}, reportTiles() {}, onCommand() {} });
-  if (!host) return;
+  const PANEL = !window.zeitjournalDesktop;
+  const host = window.zeitjournalDesktop || { setInteractive() {}, reportTiles() {}, onCommand() {} };
   const PAD = 12, NARROW = 640;
   const BOARD_KEY = 'zeitjournal.boardB';
   const GAP = 12, MIN_H = 70, MIN_W = 150;
@@ -78,18 +78,28 @@
   document.querySelector('main')?.remove();
 
   // ---------- Gespeicherte Anordnung ----------
-  const fresh = () => ({
-    w: 900,
-    pos: null,
-    hidden: { woche: true, extras: true },
-    rowH: Object.fromEntries(ROWS.map(r => [r.id, r.h])),
-    split: { r1: 0.5, r3: 0.5, r4: 0.6 },
+  // Jede Zeile: Module von links nach rechts, Höhe und Breitenanteile (w) je Modul
+  const SPLIT = { r1: 0.5, r3: 0.5, r4: 0.6 };
+  const rowsFrom = (rowH = {}, split = {}) => ROWS.map(r => {
+    const s = split[r.id] ?? SPLIT[r.id] ?? 0.5;
+    return { id: r.id, mods: [...r.mods], h: rowH[r.id] ?? r.h, w: r.mods.length === 2 ? { [r.mods[0]]: s, [r.mods[1]]: 1 - s } : { [r.mods[0]]: 1 } };
   });
+  const fresh = () => ({ w: 900, pos: null, hidden: { woche: true, extras: true }, rows: rowsFrom() });
   let L = fresh();
   try {
     const s = JSON.parse(localStorage.getItem(BOARD_KEY));
-    if (s && s.rowH) L = Object.assign(fresh(), s);
+    if (s && (s.rows || s.rowH)) {
+      L = Object.assign(fresh(), s);
+      // Ältere Anordnung (feste Zeilen) übernehmen
+      if (!s.rows) L.rows = rowsFrom(s.rowH, s.split);
+      delete L.rowH; delete L.split;
+    }
   } catch (e) { /* Standard */ }
+  // Neue Module, die in der gespeicherten Anordnung noch fehlen, kommen als eigene Zeile ans Ende
+  for (const id of Object.keys(DEFS)) {
+    if (!L.rows.some(r => r.mods.includes(id))) L.rows.push({ id: 'r_' + id, mods: [id], h: 200, w: { [id]: 1 } });
+  }
+  const rowOf = id => L.rows.find(r => r.mods.includes(id));
   function store() {
     try { localStorage.setItem(BOARD_KEY, JSON.stringify(L)); } catch (e) { /* ignorieren */ }
     host.reportTiles({ tiles: Object.entries(DEFS).map(([id, d]) => ({ id, name: d.name, visible: !L.hidden[id] })) });
@@ -99,12 +109,12 @@
   const boardW = () => PANEL ? Math.max(2 * MIN_W + GAP, document.documentElement.clientWidth - 2 * PAD) : L.w;
   // Schmal (nur im Seitenfenster): jedes Modul bekommt eine eigene Zeile
   const visibleRows = () => {
-    const rows = ROWS.map(r => ({ ...r, mods: r.mods.filter(id => !L.hidden[id]) })).filter(r => r.mods.length);
+    const rows = L.rows.map(r => ({ ...r, mods: r.mods.filter(id => !L.hidden[id]) })).filter(r => r.mods.length);
     if (!narrow()) return rows;
     return rows.flatMap(r => r.mods.length < 2 ? [r] : r.mods.map(m => ({ id: 'n_' + m, mods: [m], h: r.h })));
   };
   const narrow = () => PANEL && boardW() < NARROW;
-  const rowH = r => L.rowH[r.id] ?? r.h;
+  const rowH = r => r.h;
   let geo = [];   // berechnete Zeilen für das Ziehen an den Zwischenräumen
   function layout() {
     const rows = visibleRows();
@@ -130,15 +140,20 @@
         const g = gutter('row', i);
         Object.assign(g.style, { left: '0px', top: (y - GAP) + 'px', width: W + 'px', height: GAP + 'px' });
       }
-      if (r.mods.length === 2) {
-        const wa = Math.round((W - GAP) * (L.split[r.id] ?? 0.5));
-        put(r.mods[0], 0, y, wa, h);
-        put(r.mods[1], wa + GAP, y, W - wa - GAP, h);
-        const g = gutter('col', r.id);
-        Object.assign(g.style, { left: wa + 'px', top: y + 'px', width: GAP + 'px', height: h + 'px' });
-      } else {
-        put(r.mods[0], 0, y, W, h);
-      }
+      // Module nebeneinander nach ihren Breitenanteilen
+      const n = r.mods.length, avail = W - GAP * (n - 1);
+      const wt = r.mods.map(m => r.w?.[m] ?? 1), sum = wt.reduce((a, b) => a + b, 0);
+      let x = 0;
+      r.mods.forEach((m, k) => {
+        const w = k === n - 1 ? W - x : Math.round(avail * wt[k] / sum);
+        put(m, x, y, w, h);
+        x += w;
+        if (k < n - 1) {
+          const g = gutter('col', { row: r.id, a: m, b: r.mods[k + 1], pxPerW: avail / sum });
+          Object.assign(g.style, { left: x + 'px', top: y + 'px', width: GAP + 'px', height: h + 'px' });
+          x += GAP;
+        }
+      });
       geo.push({ id: r.id, y, h });
       y += h + GAP;
     });
@@ -148,6 +163,13 @@
     board.style.width = W + 'px';
     // Ausgeblendete Module als „+ Name“ in der Kopfleiste
     restore.textContent = '';
+    if (PANEL) {
+      const b = document.createElement('button');
+      b.textContent = '↺';
+      b.title = 'Anordnung zurücksetzen';
+      b.onclick = () => { L = fresh(); layout(); };
+      restore.append(b);
+    }
     for (const [id, d] of Object.entries(DEFS)) {
       if (!L.hidden[id]) continue;
       const b = document.createElement('button');
@@ -202,8 +224,9 @@
     return { kind: 'row', a: a.id, b: b.id, total: a.h + b.h, ha: a.h, y0: ev.clientY };
   }
   // Zwischenraum in einer Zeile: links breiter, rechts schmaler
-  function colDrag(rowId, ev) {
-    return { kind: 'col', row: rowId, s0: L.split[rowId] ?? 0.5, x0: ev.clientX };
+  function colDrag(c, ev) {
+    const r = L.rows.find(x => x.id === c.row);
+    return { kind: 'col', r, a: c.a, b: c.b, wa: r.w?.[c.a] ?? 1, wb: r.w?.[c.b] ?? 1, pxPerW: c.pxPerW, x0: ev.clientX };
   }
   if (!PANEL) board.querySelector('.board-bar').addEventListener('pointerdown', ev =>
     begin(ev, { kind: 'move', dx: ev.clientX - board.offsetLeft, dy: ev.clientY - board.offsetTop }));
@@ -211,6 +234,11 @@
   board.querySelectorAll('.board-edge').forEach(e => e.addEventListener('pointerdown', ev =>
     begin(ev, { kind: 'edge', e: e.dataset.e, x0: ev.clientX, y0: ev.clientY, w0: L.w, left0: board.offsetLeft,
       rows0: Object.fromEntries(visibleRows().map(r => [r.id, rowH(r)])) })));
+  // Titelleiste eines Moduls: Modul an einen anderen Platz im Block ziehen
+  for (const [id, t] of Object.entries(tiles)) {
+    t.querySelector('.tile-bar').addEventListener('pointerdown', ev =>
+      begin(ev, { kind: 'tile', id, x0: ev.clientX, y0: ev.clientY, started: false, target: null }));
+  }
 
   window.addEventListener('pointermove', ev => {
     if (!drag) return;
@@ -218,17 +246,25 @@
       place(ev.clientX - drag.dx, ev.clientY - drag.dy);
       return;
     }
+    if (drag.kind === 'tile') {
+      if (!drag.started && Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) < 6) return;
+      drag.started = true;
+      tiles[drag.id].classList.add('moving');
+      drag.target = dropTarget(ev.clientX, ev.clientY);
+      showMark(drag.target);
+      return;
+    }
     if (drag.kind === 'flowH') {
       L.flowH = L.flowH || {};
       L.flowH[drag.id] = Math.max(MIN_H, Math.round(drag.h0 + ev.clientY - drag.y0));
     } else if (drag.kind === 'row') {
       const ha = Math.max(MIN_H, Math.min(drag.total - MIN_H, drag.ha + ev.clientY - drag.y0));
-      L.rowH[drag.a] = ha;
-      L.rowH[drag.b] = drag.total - ha;
+      L.rows.find(r => r.id === drag.a).h = ha;
+      L.rows.find(r => r.id === drag.b).h = drag.total - ha;
     } else if (drag.kind === 'col') {
-      const avail = L.w - GAP;
-      const s = drag.s0 + (ev.clientX - drag.x0) / avail;
-      L.split[drag.row] = Math.max(MIN_W / avail, Math.min(1 - MIN_W / avail, s));
+      const min = MIN_W / drag.pxPerW, both = drag.wa + drag.wb;
+      const wa = Math.max(min, Math.min(both - min, drag.wa + (ev.clientX - drag.x0) / drag.pxPerW));
+      drag.r.w = { ...drag.r.w, [drag.a]: wa, [drag.b]: both - wa };
     } else if (drag.kind === 'edge') {
       const e = drag.e;
       if (e.includes('l') || e === 'r' || e === 'br') {
@@ -240,17 +276,98 @@
         const ids = Object.keys(drag.rows0);
         const sum0 = ids.reduce((s, id) => s + drag.rows0[id], 0);
         const f = Math.max(MIN_H * ids.length / sum0, (sum0 + ev.clientY - drag.y0) / sum0);
-        for (const id of ids) L.rowH[id] = Math.max(MIN_H, drag.rows0[id] * f);
+        for (const id of ids) { const r = L.rows.find(x => x.id === id); if (r) r.h = Math.max(MIN_H, drag.rows0[id] * f); }
       }
     }
     layout();
   });
   window.addEventListener('pointerup', () => {
     if (!drag) return;
+    if (drag.kind === 'tile') {
+      tiles[drag.id].classList.remove('moving');
+      showMark(null);
+      if (drag.started && drag.target) moveTile(drag.id, drag.target);
+      layout();
+    }
     drag = null;
     document.documentElement.classList.remove('board-dragging');
     store();
   });
+
+  // ---------- Module umstellen ----------
+  // Wohin ein gezogenes Modul käme: Rand links/rechts eines Moduls = daneben, oben/unten = eigene Zeile,
+  // Mitte = Platz tauschen. Über oder unter dem Block = ganz oben oder ganz unten.
+  const maxPerRow = () => Math.max(1, Math.floor((boardW() + GAP) / (MIN_W + GAP)));
+  function dropTarget(cx, cy) {
+    const box = mods.getBoundingClientRect(), x = cx - box.left, y = cy - box.top;
+    const flow = narrow();
+    const vis = Object.keys(DEFS).filter(m => !L.hidden[m] && m !== drag.id);
+    for (const m of vis) {
+      const t = tiles[m], l = t.offsetLeft, tp = t.offsetTop, w = t.offsetWidth, h = t.offsetHeight;
+      if (x < l - GAP / 2 || x > l + w + GAP / 2 || y < tp - GAP / 2 || y > tp + h + GAP / 2) continue;
+      const fx = (x - l) / w, fy = (y - tp) / h;
+      const row = rowOf(m);
+      const others = row.mods.filter(k => !L.hidden[k] && k !== drag.id).length;
+      if (!flow && others < maxPerRow() && (fx < 0.25 || fx > 0.75)) return { type: 'beside', ref: m, after: fx > 0.5 };
+      if (fy < 0.3 || fy > 0.7) return { type: 'row', ref: m, after: fy > 0.5 };
+      return { type: 'swap', ref: m };
+    }
+    if (!vis.length) return null;
+    if (y < 0) return { type: 'row', ref: vis.reduce((a, m) => (tiles[m].offsetTop < tiles[a].offsetTop ? m : a)), after: false, edge: 'top' };
+    if (y > mods.offsetHeight) {
+      return { type: 'row', ref: vis.reduce((a, m) => (tiles[m].offsetTop >= tiles[a].offsetTop ? m : a)), after: true, edge: 'bottom' };
+    }
+    return null;
+  }
+  let mark = null;
+  function showMark(t) {
+    if (!t) { mark?.remove(); mark = null; return; }
+    if (!mark) { mark = document.createElement('div'); }
+    mods.append(mark);
+    const r = tiles[t.ref], l = r.offsetLeft, tp = r.offsetTop, w = r.offsetWidth, h = r.offsetHeight;
+    mark.className = 'drop-mark ' + t.type;
+    let s;
+    if (t.type === 'swap') s = { left: l, top: tp, width: w, height: h };
+    else if (t.type === 'beside') s = { left: t.after ? l + w + GAP / 2 - 2 : l - GAP / 2 - 2, top: tp, width: 4, height: h };
+    else {
+      // Neue Zeile: Linie über die ganze Breite an der Zeilenkante
+      const rowTiles = narrow() ? [r] : rowOf(t.ref).mods.filter(m => !L.hidden[m]).map(m => tiles[m]);
+      const top = Math.min(...rowTiles.map(e => e.offsetTop)), bot = Math.max(...rowTiles.map(e => e.offsetTop + e.offsetHeight));
+      s = { left: 0, top: t.after ? bot + GAP / 2 - 2 : top - GAP / 2 - 2, width: mods.offsetWidth, height: 4 };
+    }
+    for (const k in s) mark.style[k] = s[k] + 'px';
+  }
+  function moveTile(id, t) {
+    const src = rowOf(id), dst = rowOf(t.ref);
+    if (t.type === 'swap') {
+      const i = src.mods.indexOf(id), j = dst.mods.indexOf(t.ref);
+      const wa = src.w?.[id] ?? 1, wb = dst.w?.[t.ref] ?? 1;
+      src.mods[i] = t.ref; dst.mods[j] = id;
+      delete src.w[id]; delete dst.w[t.ref];
+      src.w[t.ref] = wa; dst.w[id] = wb;
+      return;
+    }
+    const h = Math.max(MIN_H, Math.round(tiles[id].offsetHeight));
+    src.mods.splice(src.mods.indexOf(id), 1);
+    delete src.w[id];
+    if (!src.mods.length) L.rows.splice(L.rows.indexOf(src), 1);
+    if (t.type === 'beside') {
+      const vis = dst.mods.filter(m => !L.hidden[m]);
+      dst.w[id] = vis.reduce((a, m) => a + (dst.w[m] ?? 1), 0) / Math.max(1, vis.length);
+      dst.mods.splice(dst.mods.indexOf(t.ref) + (t.after ? 1 : 0), 0, id);
+    } else {
+      // Schmal steht jedes Modul für sich: die neue Zeile kommt direkt an das Ziel-Modul, eine Zeile mit
+      // mehreren Modulen wird dafür an dieser Stelle geteilt
+      let at = L.rows.indexOf(dst) + (t.after ? 1 : 0);
+      const k = dst.mods.indexOf(t.ref) + (t.after ? 1 : 0);
+      if (narrow() && !t.edge && k > 0 && k < dst.mods.length) {
+        const rest = dst.mods.splice(k);
+        L.rows.splice(L.rows.indexOf(dst) + 1, 0, { id: 'r' + Date.now().toString(36) + 'b', mods: rest, h: dst.h, w: Object.fromEntries(rest.map(m => [m, dst.w[m] ?? 1])) });
+        at = L.rows.indexOf(dst) + 1;
+      }
+      L.rows.splice(at, 0, { id: 'r' + Date.now().toString(36), mods: [id], h, w: { [id]: 1 } });
+    }
+  }
 
   // ---------- Maus-Durchlass: leere Flächen lassen Klicks zum Desktop durch ----------
   let interactive = null;

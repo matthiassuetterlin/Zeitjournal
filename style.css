@@ -636,3 +636,10 @@ html.panel.narrow .board-edge { display: none; }
 .tile-body > .notes { height: 100%; box-sizing: border-box; }
 .tile-body > .notes textarea { flex: 1; min-height: 0; resize: none; }
 html.narrow .tile:not(.sized) .notes textarea { flex: none; min-height: 140px; }
+
+/* ---------- Module verschieben ---------- */
+.tile-bar { cursor: grab; touch-action: none; user-select: none; }
+html.board-dragging .tile-bar { cursor: grabbing; }
+.tile.moving { opacity: .45; }
+.drop-mark { position: absolute; z-index: 40; pointer-events: none; border-radius: 3px; background: var(--accent); }
+.drop-mark.swap { background: color-mix(in srgb, var(--accent) 14%, transparent); border: 2px solid var(--accent); border-radius: 12px; box-sizing: border-box; }
