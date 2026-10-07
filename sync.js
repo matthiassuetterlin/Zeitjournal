@@ -147,8 +147,9 @@
   // Fehlt die Funktion zj_rev auf dem Server (ältere Einrichtung), wird wie früher alle 30 Sekunden ganz abgeglichen.
   let revMissing = false, revOk = false, lastFull = 0;
   async function poll() {
-    // Die Desktop-App liegt dauerhaft auf dem Bildschirm und gilt verdeckt oft als „versteckt“: dort immer abgleichen
-    if (!active() || busy || (document.visibilityState === 'hidden' && !window.zeitjournalDesktop)) return;
+    // Auch „versteckt“ weiter fragen: Windows meldet ein sichtbares Browserfenster als versteckt, sobald ein
+    // anderes Fenster (z. B. die Desktop-App über den ganzen Bildschirm) davor liegt. Die Abfrage ist winzig.
+    if (!active() || busy) return;
     if (dirty()) return syncNow();
     if (revMissing) { if (Date.now() - lastFull >= FULL_MS) { lastFull = Date.now(); syncNow(); } return; }
     try {
