@@ -26,7 +26,9 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
       # Build-Nummer mitgeben, damit das Tray-Menü zeigt, welche Version installiert ist
-      - run: node -e "require('fs').writeFileSync('build-info.json', JSON.stringify({ build: process.env.RUN }))"
+      - shell: bash
+        run: |
+          node -e "require('fs').writeFileSync('build-info.json', JSON.stringify({ build: process.env.RUN }))"
         env:
           RUN: ${{ github.run_number }}
       - run: npm run dist
