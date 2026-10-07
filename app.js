@@ -257,11 +257,6 @@ function renderProjectMenu() {
   const m = document.createElement('div');
   m.className = 'projmenu';
   if (!state.projects.length) m.insertAdjacentHTML('beforeend', '<div class="empty">Noch keine Projekte angelegt.</div>');
-  const none = document.createElement('div');
-  none.className = 'item' + (state.cat === 'projekte' && !state.project ? ' active' : '');
-  none.innerHTML = `<span class="dot" style="background:${catById('projekte').color}"></span><span class="name">Ohne Projekt</span>`;
-  none.onclick = () => { projMenuOpen = false; chooseCategory('projekte', null); };
-  m.appendChild(none);
   for (const pr of state.projects) {
     const it = document.createElement('div');
     it.className = 'item' + (state.cat === 'projekte' && state.project === pr.id ? ' active' : '');
@@ -295,7 +290,8 @@ function renderProjectMenu() {
       if (a === 'del') { deleteProject(pr.id); return; }
       if (renamingProject === pr.id) return;
       projMenuOpen = false;
-      chooseCategory('projekte', pr.id);
+      // Nochmal auf das gewählte Projekt: wieder ohne Projekt
+      chooseCategory('projekte', state.cat === 'projekte' && state.project === pr.id ? null : pr.id);
     };
     m.appendChild(it);
   }
