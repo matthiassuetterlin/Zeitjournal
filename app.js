@@ -39,8 +39,31 @@ const projById = id => state.projects.find(p => p.id === id) || null;
 // Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
 const entryColor = e => (e.cat === 'projekte' && projById(e.project)?.color) || catById(e.cat).color;
 const entryLabel = e => (e.cat === 'projekte' && projById(e.project)?.name) || catById(e.cat).name;
+// Aufgeteilte Blöcke: parts = [{ cat, project, w }] von oben nach unten, w = Anteil.
+// cat/project des Blocks sind immer die des obersten Teils.
+const partsOf = e => (e.parts && e.parts.length > 1 ? e.parts : [{ cat: e.cat, project: e.project || null, w: 1 }]);
+const partColor = p => (p.cat === 'projekte' && projById(p.project)?.color) || catById(p.cat).color;
+const partLabel = p => (p.cat === 'projekte' && projById(p.project)?.name) || catById(p.cat).name;
+// Minuten je Teil
+function partMinutes(e) {
+  const ps = partsOf(e), sum = ps.reduce((a, p) => a + p.w, 0) || 1;
+  return ps.map(p => ({ p, min: (e.end - e.start) * p.w / sum }));
+}
+// Welcher Teil liegt auf Höhe clientY im Block-Element?
+function partAt(e, el, clientY) {
+  const ps = partsOf(e), r = el.getBoundingClientRect(), sum = ps.reduce((a, p) => a + p.w, 0);
+  const y = clamp((clientY - r.top) / r.height, 0, 0.999) * sum;
+  let acc = 0;
+  for (let i = 0; i < ps.length; i++) { acc += ps[i].w; if (y < acc) return i; }
+  return ps.length - 1;
+}
+function syncHead(e) {
+  if (e.parts && e.parts.length > 1) { e.cat = e.parts[0].cat; e.project = e.parts[0].project; }
+  else { if (e.parts?.length === 1) { e.cat = e.parts[0].cat; e.project = e.parts[0].project; } delete e.parts; }
+}
 let viewDate = toDateStr(new Date());
 let selectedId = null;
+let selectedPart = 0;   // gewählter Teil eines aufgeteilten Blocks
 const history = [];   // Zustände vor einer Änderung
 const future = [];    // für Wiederholen zurückgelegte Zustände
 
@@ -315,11 +338,14 @@ function renderProjectMenu() {
 }
 async function deleteProject(id) {
   const pr = projById(id);
-  const used = state.entries.filter(e => e.project === id).length;
+  const used = state.entries.filter(e => partsOf(e).some(p => p.project === id)).length;
   if (!await askConfirm(`Projekt „${pr.name}“ löschen?` + (used ? ` ${used} Block/Blöcke bleiben unter „Projekte“ ohne Projektnamen erhalten.` : ''), 'Löschen')) return;
   snapshot();
   state.projects = state.projects.filter(p => p.id !== id);
-  for (const e of state.entries) if (e.project === id) e.project = null;
+  for (const e of state.entries) {
+    if (e.project === id) e.project = null;
+    for (const p of e.parts || []) if (p.project === id) p.project = null;
+  }
   if (state.project === id) state.project = null;
   save();
   render();
@@ -372,10 +398,30 @@ function renderTrack() {
     el.dataset.id = e.id;
     el.style.left = pct(e.start) + '%';
     el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
-    el.style.background = entryColor(e);
+    const pm = partMinutes(e), split = pm.length > 1;
+    el.style.background = split ? 'transparent' : entryColor(e);
     el.style.color = textOn(entryColor(e));
-    el.title = `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`;
-    el.innerHTML = `<span class="title"></span><span class="meta">${fmtTime(e.start)}–${fmtTime(e.end)} · ${fmtDur(e.end - e.start)}</span>
+    el.title = `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`
+      + (split ? '\n' + pm.map(x => `${partLabel(x.p)}: ${fmtDur(x.min)}`).join('\n') : '');
+    // Teile übereinander, dazwischen verschiebbare Trennlinien
+    let parts = '';
+    if (split) {
+      const sum = pm.reduce((a, x) => a + x.p.w, 0), blockH = track.clientHeight - 16;
+      let acc = 0;
+      pm.forEach((x, i) => {
+        const top = (acc / sum) * 100, h = (x.p.w / sum) * 100;
+        acc += x.p.w;
+        const cls = 'part' + (h / 100 * blockH < 17 ? ' thin' : '') + (e.id === selectedId && i === selectedPart ? ' psel' : '')
+          + (drag?.mode === 'preorder' && drag.id === e.id ? (i === drag.pi ? ' lifted' : i === drag.target ? ' ptarget' : '') : '');
+        parts += `<div class="${cls}" data-pi="${i}" style="top:${top}%;height:${h}%;background:${partColor(x.p)};color:${textOn(partColor(x.p))}">`
+          + (i ? `<span class="plabel">${esc(partLabel(x.p))} · ${fmtDur(x.min)}</span>` : '')
+          + `<button class="pdel" data-pi="${i}" title="Teil entfernen">×</button></div>`;
+        if (i) parts += `<div class="pdiv" data-pi="${i}" style="top:${top}%" title="Ziehen = Anteile verschieben"></div>`;
+      });
+    }
+    el.classList.toggle('split', split);
+    el.innerHTML = `${parts}<span class="title"></span><span class="meta">${fmtTime(e.start)}–${fmtTime(e.end)} · ${split ? fmtDur(pm[0].min).replace('\u00a0h', '') + ' von ' : ''}${fmtDur(e.end - e.start)}</span>
+      <button class="bmore" title="Mehr: Trennung einfügen">⋯</button>
       <div class="handle l" data-h="l"></div>${e.id === state.running ? '' : '<div class="handle r" data-h="r"></div>'}`;
     el.querySelector('.title').textContent = e.title || entryLabel(e);
     track.appendChild(el);
@@ -413,7 +459,13 @@ function renderWeek() {
       const b = document.createElement('div');
       b.style.left = ((e.start - wlo) / (whi - wlo)) * 100 + '%';
       b.style.width = ((e.end - e.start) / (whi - wlo)) * 100 + '%';
-      b.style.background = entryColor(e);
+      const pm = partMinutes(e);
+      if (pm.length > 1) {
+        // Aufgeteilt: Streifen übereinander wie in der Zeitleiste
+        const sum = e.end - e.start || 1;
+        let acc = 0;
+        b.style.background = `linear-gradient(${pm.map(x => { const a = acc / sum * 100; acc += x.min; return `${partColor(x.p)} ${a}% ${acc / sum * 100}%`; }).join(', ')})`;
+      } else b.style.background = entryColor(e);
       mini.appendChild(b);
     }
     row.innerHTML = `<span class="label">${label}</span>`;
@@ -450,8 +502,7 @@ function renderMonth() {
     const parts = new Map();
     let total = 0;
     for (const e of dayEntries(date)) {
-      const c = entryColor(e);
-      parts.set(c, (parts.get(c) || 0) + (e.end - e.start));
+      for (const x of partMinutes(e)) { const c = partColor(x.p); parts.set(c, (parts.get(c) || 0) + x.min); }
       total += e.end - e.start;
     }
     if (inMonth) monthTotal += total;
@@ -476,12 +527,12 @@ function sums(dates) {
   const rows = new Map();
   const list = state.entries.filter(e => dates.includes(e.date))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  for (const e of list) {
-    const c = catById(e.cat);
-    const pr = c.id === 'projekte' ? projById(e.project) : null;
+  for (const e of list) for (const { p, min } of partMinutes(e)) {
+    const c = catById(p.cat);
+    const pr = c.id === 'projekte' ? projById(p.project) : null;
     const k = pr ? 'p:' + pr.id : c.id;
     if (!rows.has(k)) rows.set(k, pr ? { name: `${c.name} · ${pr.name}`, color: pr.color, v: 0 } : { name: c.name, color: c.color, v: 0 });
-    rows.get(k).v += e.end - e.start;
+    rows.get(k).v += min;
   }
   for (const c of CATEGORIES) {
     const used = c.id === 'projekte' ? [...rows.keys()].some(k => k === 'projekte' || k.startsWith('p:')) : rows.has(c.id);
@@ -532,8 +583,15 @@ function chooseCategory(id, project) {
   const sel = state.entries.find(e => e.id === selectedId);
   if (sel) {
     snapshot();
-    sel.cat = id;
-    sel.project = proj;
+    // Aufgeteilter Block: nur den gewählten Teil umfärben
+    if (sel.parts?.length > 1) {
+      const p = sel.parts[Math.min(selectedPart, sel.parts.length - 1)];
+      p.cat = id; p.project = proj;
+      syncHead(sel);
+    } else {
+      sel.cat = id;
+      sel.project = proj;
+    }
   } else if (state.running) {
     const run = state.entries.find(e => e.id === state.running);
     if (run && (run.cat !== id || (run.project || null) !== proj)) { stopTimer(); startTimer(); }
@@ -548,7 +606,7 @@ function startTimer() {
   const n = nowMinutes();
   snapshot();
   // Läuft der Timer direkt im Anschluss an einen Block derselben Kategorie, wird dieser verlängert.
-  const prev = dayEntries(today).find(e => e.cat === state.cat && (e.project || null) === currentProject() && n - e.end >= 0 && n - e.end < 1);
+  const prev = dayEntries(today).find(e => !e.parts && e.cat === state.cat && (e.project || null) === currentProject() && n - e.end >= 0 && n - e.end < 1);
   let e = prev;
   // Läuft gerade ein anderer Block über „jetzt“ hinaus, endet er jetzt.
   for (const o of dayEntries(today)) if (o !== e && o.start < n && o.end > n) o.end = Math.max(o.start, Math.floor(n));
@@ -581,6 +639,7 @@ function tick() {
       // Über Mitternacht: alten Block um 24:00 abschließen und heute weiterlaufen lassen.
       e.end = DAY_MIN;
       const n = { id: uid(), date: today, start: 0, end: nowMinutes(), cat: e.cat, project: e.project, title: e.title };
+      if (e.parts) n.parts = e.parts.map(p => ({ ...p }));
       state.entries.push(n);
       state.running = n.id;
     } else {
@@ -622,6 +681,20 @@ track.addEventListener('pointerdown', ev => {
   if (blockEl) {
     const e = state.entries.find(x => x.id === blockEl.dataset.id);
     selectedId = e.id;
+    // Teil entfernen, Menü, Trennlinie ziehen
+    const pdel = ev.target.closest('.pdel');
+    if (pdel) { snapshot(); removePart(e, +pdel.dataset.pi); save(); render(); return; }
+    if (ev.target.closest('.bmore')) { render(); openBlockMenu(e); return; }
+    const pdiv = ev.target.closest('.pdiv');
+    const partIdx = partAt(e, blockEl, ev.clientY);
+    selectedPart = partIdx;
+    if (pdiv) {
+      snapshot();
+      const i = +pdiv.dataset.pi, ps = e.parts;
+      drag = { mode: 'pdiv', id: e.id, i, y0: ev.clientY, h: blockEl.clientHeight, wa: ps[i - 1].w, wb: ps[i].w, sum: ps.reduce((a, p) => a + p.w, 0), moved: false };
+      track.setPointerCapture(ev.pointerId);
+      return;
+    }
     // Doppelklick selbst erkennen, weil die Leiste jede Sekunde neu gezeichnet wird
     const dbl = lastClick.id === e.id && ev.timeStamp - lastClick.t < 400;
     lastClick = { id: e.id, t: ev.timeStamp };
@@ -636,6 +709,15 @@ track.addEventListener('pointerdown', ev => {
     const nb = h === 'l' ? others.filter(o => o.end <= e.start + 0.5).pop()
              : h === 'r' ? others.find(o => o.start >= e.end - 0.5) : null;
     if (nb) drag.nb = { id: nb.id, start0: nb.start, end0: nb.end, touching: Math.abs(h === 'l' ? nb.end - e.start : nb.start - e.end) < 0.5 };
+    // Lange auf einen Teil drücken: Teil anheben und nach oben/unten auf einen anderen ziehen = tauschen
+    if (!h && e.parts?.length > 1) {
+      const pi = selectedPart;
+      drag.press = setTimeout(() => {
+        if (!drag || drag.id !== e.id || drag.moved) return;
+        drag.mode = 'preorder'; drag.pi = pi; drag.target = pi;
+        renderTrack();
+      }, 450);
+    }
   } else {
     const g = gapAt(viewDate, m);
     if (!g) return;
@@ -652,6 +734,22 @@ track.addEventListener('pointerdown', ev => {
 
 track.addEventListener('pointermove', ev => {
   if (!drag) return;
+  if (drag.mode === 'pdiv') {
+    const e = state.entries.find(x => x.id === drag.id);
+    const both = drag.wa + drag.wb, min = Math.min(Math.max(drag.sum * 0.12, 20 / drag.h * drag.sum), both / 2);
+    const wa = clamp(drag.wa + (ev.clientY - drag.y0) / drag.h * drag.sum, min, both - min);
+    e.parts[drag.i - 1].w = wa; e.parts[drag.i].w = both - wa;
+    drag.moved = true;
+    renderTrack();
+    return;
+  }
+  if (drag.mode === 'preorder') {
+    const el = track.querySelector(`.block[data-id="${drag.id}"]`);
+    if (!el) return;
+    const t = partAt(state.entries.find(x => x.id === drag.id), el, ev.clientY);
+    if (t !== drag.target) { drag.target = t; renderTrack(); }
+    return;
+  }
   if (Math.abs(ev.clientX - drag.x0) > 3) drag.moved = true;
   if (!drag.moved) return;
   const e = state.entries.find(x => x.id === drag.id);
@@ -688,7 +786,21 @@ track.addEventListener('pointermove', ev => {
 
 function endDrag() {
   if (!drag) return;
+  clearTimeout(drag.press);
   const e = state.entries.find(x => x.id === drag.id);
+  if (drag.mode === 'preorder' || drag.mode === 'pdiv') {
+    // Tauschen: die beiden Teile tauschen ihre Kategorien, die Anteile bleiben an ihrem Platz
+    if (drag.mode === 'preorder' && e && drag.target !== drag.pi) {
+      const a = e.parts[drag.pi], b = e.parts[drag.target];
+      [a.cat, a.project, b.cat, b.project] = [b.cat, b.project, a.cat, a.project];
+      syncHead(e);
+      selectedPart = drag.target;
+    } else if (drag.mode === 'preorder' || !drag.moved) { history.pop(); renderHistoryButtons(); }
+    drag = null;
+    save();
+    render();
+    return;
+  }
   if (drag.mode === 'create' && e) {
     if (!drag.moved || e.end - e.start < state.snap) {
       // Einfacher Klick: Block mit 1 Stunde (soweit Platz ist)
@@ -712,6 +824,59 @@ track.addEventListener('pointerup', () => {
 });
 track.addEventListener('pointercancel', endDrag);
 
+
+// ---------- Blöcke aufteilen ----------
+// Neue Trennung: der unterste Teil gibt die Hälfte ab; der neue Teil bekommt die gewählte Kategorie
+// (oder die nächste, die im Block noch nicht vorkommt) und ist gleich markiert, ein Klick oben färbt ihn um.
+function splitBlock(e) {
+  snapshot();
+  const ps = partsOf(e).map(p => ({ ...p }));
+  let cat = state.cat, project = currentProject();
+  if (ps.some(p => p.cat === cat && (p.project || null) === (project || null))) {
+    cat = (CATEGORIES.find(c => !ps.some(p => p.cat === c.id)) || CATEGORIES[0]).id;
+    project = null;
+  }
+  const last = ps[ps.length - 1];
+  last.w /= 2;
+  ps.push({ cat, project, w: last.w });
+  e.parts = ps;
+  syncHead(e);
+  selectedId = e.id; selectedPart = ps.length - 1;
+  save();
+  render();
+}
+function removePart(e, i) {
+  const ps = partsOf(e).map(p => ({ ...p }));
+  if (ps.length < 2) return;
+  const [gone] = ps.splice(i, 1);
+  (ps[i - 1] || ps[0]).w += gone.w;
+  e.parts = ps;
+  syncHead(e);
+  selectedPart = 0;
+}
+const blockMenu = document.createElement('div');
+blockMenu.className = 'blockmenu';
+blockMenu.hidden = true;
+document.body.append(blockMenu);
+function openBlockMenu(e) {
+  const btn = track.querySelector(`.block[data-id="${e.id}"] .bmore`);
+  if (!btn) return;
+  const r = btn.getBoundingClientRect();
+  blockMenu.innerHTML = '<button data-a="split">Trennung einfügen</button>'
+    + (e.parts?.length > 1 ? '<button data-a="join">Aufteilung entfernen</button>' : '');
+  blockMenu.hidden = false;
+  blockMenu.style.left = Math.max(8, Math.min(innerWidth - blockMenu.offsetWidth - 8, r.right - blockMenu.offsetWidth)) + 'px';
+  blockMenu.style.top = (r.bottom + 4 + blockMenu.offsetHeight > innerHeight ? r.top - 4 - blockMenu.offsetHeight : r.bottom + 4) + 'px';
+  blockMenu.onclick = ev => {
+    const a = ev.target.dataset.a;
+    if (!a) return;
+    blockMenu.hidden = true;
+    if (a === 'split') splitBlock(e);
+    if (a === 'join') { snapshot(); delete e.parts; selectedPart = 0; save(); render(); }
+  };
+}
+document.addEventListener('pointerdown', ev => { if (!blockMenu.hidden && !blockMenu.contains(ev.target)) blockMenu.hidden = true; }, true);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !blockMenu.hidden) { ev.stopPropagation(); blockMenu.hidden = true; } }, true);
 
 // ---------- Umbenennen ----------
 let editingId = null;
@@ -792,7 +957,7 @@ $('copyYesterday').onclick = async () => {
   for (const e of dayEntries(src)) {
     const g = gapAt(viewDate, e.start);
     if (!g || g.hi < e.end || e.start === g.hi) continue;
-    state.entries.push({ ...e, id: uid(), date: viewDate });
+    state.entries.push({ ...e, id: uid(), date: viewDate, ...(e.parts ? { parts: e.parts.map(p => ({ ...p })) } : {}) });
   }
   save();
   render();
@@ -815,7 +980,10 @@ async function download(name, text, type) {
 $('exportCsv').onclick = () => {
   const rows = [['Datum', 'Start', 'Ende', 'Dauer (h)', 'Kategorie', 'Projekt', 'Bezeichnung']];
   for (const e of [...state.entries].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)) {
-    rows.push([e.date, fmtTime(e.start), fmtTime(e.end), ((e.end - e.start) / 60).toFixed(2).replace('.', ','), catById(e.cat).name, (e.cat === 'projekte' && projById(e.project)?.name) || '', e.title || '']);
+    // Aufgeteilte Blöcke: eine Zeile je Teil mit seinem Anteil an der Dauer
+    for (const { p, min } of partMinutes(e)) {
+      rows.push([e.date, fmtTime(e.start), fmtTime(e.end), (min / 60).toFixed(2).replace('.', ','), catById(p.cat).name, (p.cat === 'projekte' && projById(p.project)?.name) || '', e.title || '']);
+    }
   }
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
   download('zeitjournal.csv', '﻿' + csv, 'text/csv');
@@ -984,7 +1152,9 @@ track.addEventListener('contextmenu', ev => {
   ev.preventDefault();
   const blockEl = ev.target.closest('.block');
   const e = blockEl && state.entries.find(x => x.id === blockEl.dataset.id);
-  const cat = e ? e.cat : state.cat, project = e ? e.project : state.project;
+  const pEl = ev.target.closest('.part');
+  const part = e && pEl ? partsOf(e)[+pEl.dataset.pi] : null;
+  const cat = part ? part.cat : e ? e.cat : state.cat, project = part ? part.project : e ? e.project : state.project;
   openColorMenu(ev.clientX, ev.clientY, cat === 'projekte' && projById(project) ? { type: 'proj', id: project } : { type: 'cat', id: cat });
 });
 
