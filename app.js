@@ -196,12 +196,23 @@ function gapAt(date, m, exceptId) {
 }
 
 // ---------- Sichtbarer Bereich der Zeitleiste ----------
-// Sichtbarer Bereich: eingestellte Stunden (von/bis), erweitert um Blöcke außerhalb und um „jetzt“
+// Sichtbarer Bereich: eingestellte Stunden (von/bis, auch in den Vortag bzw. nächsten Tag hinein),
+// erweitert um Blöcke außerhalb und um „jetzt“. Minuten relativ zu 0:00 des gezeigten Tages.
 function viewRange() {
   let lo = (layout.dayFrom ?? 6) * 60, hi = (layout.dayTo ?? 24) * 60;
   for (const e of dayEntries(viewDate)) { lo = Math.min(lo, e.start); hi = Math.max(hi, e.end); }
-  if (viewDate === toDateStr(new Date())) { const n = nowMinutes(); lo = Math.min(lo, n); hi = Math.max(hi, n + 30); }
-  return { lo: Math.floor(lo / 60) * 60, hi: Math.min(DAY_MIN, Math.ceil(hi / 60) * 60) };
+  if (viewDate === toDateStr(new Date())) { const n = nowMinutes(); lo = Math.min(lo, n); hi = Math.max(hi, Math.min(DAY_MIN, n + 30)); }
+  return { lo: Math.floor(lo / 60) * 60, hi: Math.ceil(hi / 60) * 60 };
+}
+// Blöcke im sichtbaren Bereich: vom gezeigten Tag und, wenn die Leiste hineinreicht, vom Vortag/nächsten Tag
+function viewEntries(lo, hi) {
+  const res = [];
+  for (const off of [-DAY_MIN, 0, DAY_MIN]) {
+    if (off && (off < 0 ? lo >= 0 : hi <= DAY_MIN)) continue;
+    for (const e of dayEntries(addDays(viewDate, off / DAY_MIN)))
+      if (!off || (e.end + off > lo && e.start + off < hi)) res.push({ e, off });
+  }
+  return res;
 }
 
 // ---------- DOM ----------
@@ -356,6 +367,7 @@ function renderTrack() {
   const { lo, hi } = viewRange();
   const span = hi - lo;
   const pct = m => ((m - lo) / span) * 100;
+  const dayTag = d => parseDate(d).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' }).replace(',', '');
   // Zoom: Breite pro Stunde; 0 = ganzer Bereich passt ins Fenster
   const scroller = $('trackScroll');
   const fitPx = scroller.clientWidth / (span / 60);
@@ -370,26 +382,40 @@ function renderTrack() {
   const labelStep = pxPerHour < 26 ? 180 : pxPerHour < 42 ? 120 : 60;
   for (let m = lo; m <= hi; m += 30) {
     const g = document.createElement('div');
-    g.className = 'gridline' + (m % 60 ? ' half' : '');
+    g.className = 'gridline' + (m % 60 ? ' half' : '') + (m % DAY_MIN === 0 && m > lo && m < hi ? ' midnight' : '');
     g.style.left = pct(m) + '%';
     track.appendChild(g);
     if (m % labelStep === 0) {
       const s = document.createElement('span');
-      s.textContent = `${m / 60}:00`;
+      // Mitternacht im Vortag/nächsten Tag: Datum statt 0:00
+      const mid = m % DAY_MIN === 0 && m > lo && m < hi;
+      s.textContent = mid ? dayTag(addDays(viewDate, m / DAY_MIN)) : m === DAY_MIN ? '24:00' : `${((m % DAY_MIN) + DAY_MIN) % DAY_MIN / 60}:00`;
+      if (mid) s.className = 'daylabel';
       s.style.left = pct(m) + '%';
       if (m === lo) s.style.transform = 'none';           // Randbeschriftung nicht abschneiden
       if (m === hi) s.style.transform = 'translateX(-100%)';
       scale.appendChild(s);
     }
   }
-  if (viewDate === toDateStr(new Date())) {
+  // Vortag/nächster Tag leicht abgesetzt
+  for (const [a, b] of [[lo, Math.min(hi, 0)], [Math.max(lo, DAY_MIN), hi]]) {
+    if (b <= a) continue;
+    const o = document.createElement('div');
+    o.className = 'othday';
+    o.style.left = pct(a) + '%'; o.style.width = (pct(b) - pct(a)) + '%';
+    track.appendChild(o);
+  }
+  const today = toDateStr(new Date());
+  for (const off of [-DAY_MIN, 0, DAY_MIN]) {
+    const nm = nowMinutes() + off;
+    if (addDays(viewDate, off / DAY_MIN) !== today || nm < lo || nm > hi) continue;
     const n = document.createElement('div');
     n.className = 'now';
-    n.style.left = pct(nowMinutes()) + '%';
+    n.style.left = pct(nm) + '%';
     track.appendChild(n);
   }
   const trackW = track.clientWidth;
-  for (const e of dayEntries(viewDate)) {
+  for (const { e, off } of viewEntries(lo, hi)) {
     const c = catById(e.cat);
     const el = document.createElement('div');
     // Schmale Blöcke: einzeilig mit „…“ (voller Text im Tooltip), sehr schmale nur Farbe
@@ -397,12 +423,13 @@ function renderTrack() {
     const size = wPx < 28 ? ' tiny' : wPx < 110 ? ' narrow' : '';
     el.className = 'block' + size + (e.id === selectedId ? ' selected' : '') + (e.id === state.running ? ' running' : '');
     el.dataset.id = e.id;
-    el.style.left = pct(e.start) + '%';
-    el.style.width = Math.max(0.3, pct(e.end) - pct(e.start)) + '%';
+    el.dataset.off = off;
+    el.style.left = pct(e.start + off) + '%';
+    el.style.width = Math.max(0.3, pct(e.end + off) - pct(e.start + off)) + '%';
     const pm = partMinutes(e), split = pm.length > 1;
     el.style.background = split ? 'transparent' : entryColor(e);
     el.style.color = textOn(entryColor(e));
-    el.title = `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`
+    el.title = (off ? dayTag(e.date) + ': ' : '') + `${e.title || entryLabel(e)}${e.title && e.cat === 'projekte' ? ' (' + entryLabel(e) + ')' : ''}\n${fmtTime(e.start)}–${fmtTime(e.end)} (${fmtDur(e.end - e.start)})`
       + (split ? '\n' + pm.map(x => `${partLabel(x.p)}: ${fmtDur(x.min)}`).join('\n') : '');
     // Teile übereinander, dazwischen verschiebbare Trennlinien
     let parts = '';
@@ -428,6 +455,8 @@ function renderTrack() {
     track.appendChild(el);
   }
   track._range = { lo, hi };
+  $('trackEarlier').disabled = lo <= RANGE_MIN * 60;
+  $('trackLater').disabled = hi >= RANGE_MAX * 60;
   // Beim Tageswechsel an die interessante Stelle scrollen (jetzt bzw. erster Block)
   if (scroller._date !== viewDate) {
     scroller._date = viewDate;
@@ -443,7 +472,7 @@ function renderWeek() {
   $('weekLabel').textContent = `${parseDate(mon).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })} – ${parseDate(sun).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`;
   const rows = $('weekRows');
   rows.innerHTML = '';
-  const lo = layout.dayFrom * 60, hi = layout.dayTo * 60;
+  const lo = clamp(layout.dayFrom * 60, 0, DAY_MIN - 60), hi = clamp(layout.dayTo * 60, lo + 60, DAY_MIN);
   let wlo = lo, whi = hi;
   for (let i = 0; i < 7; i++) for (const e of dayEntries(addDays(mon, i))) { wlo = Math.min(wlo, e.start); whi = Math.max(whi, e.end); }
   wlo = Math.floor(wlo / 60) * 60; whi = Math.ceil(whi / 60) * 60;
@@ -678,7 +707,8 @@ track.addEventListener('pointerdown', ev => {
   closeEditor(true);
   projMenuOpen = false;
   const blockEl = ev.target.closest('.block');
-  const m = minutesAt(ev.clientX);
+  const off = blockEl ? +blockEl.dataset.off || 0 : 0;
+  const m = minutesAt(ev.clientX) - off;
   if (blockEl) {
     const e = state.entries.find(x => x.id === blockEl.dataset.id);
     selectedId = e.id;
@@ -704,9 +734,9 @@ track.addEventListener('pointerdown', ev => {
     const isRunning = e.id === state.running;
     if (isRunning && !h) { render(); return; } // laufenden Block nicht verschieben
     snapshot();
-    drag = { mode: h === 'l' ? 'left' : h === 'r' ? 'right' : 'move', id: e.id, x0: ev.clientX, m0: m, start0: e.start, end0: e.end, moved: false };
+    drag = { mode: h === 'l' ? 'left' : h === 'r' ? 'right' : 'move', id: e.id, off, x0: ev.clientX, m0: m, start0: e.start, end0: e.end, moved: false };
     // Nachbar auf der gezogenen Seite: wird mitverkleinert bzw. folgt, wenn er direkt anliegt
-    const others = dayEntries(viewDate).filter(o => o.id !== e.id && o.id !== state.running);
+    const others = dayEntries(e.date).filter(o => o.id !== e.id && o.id !== state.running);
     const nb = h === 'l' ? others.filter(o => o.end <= e.start + 0.5).pop()
              : h === 'r' ? others.find(o => o.start >= e.end - 0.5) : null;
     if (nb) drag.nb = { id: nb.id, start0: nb.start, end0: nb.end, touching: Math.abs(h === 'l' ? nb.end - e.start : nb.start - e.end) < 0.5 };
@@ -720,14 +750,16 @@ track.addEventListener('pointerdown', ev => {
       }, 450);
     }
   } else {
-    const g = gapAt(viewDate, m);
+    // Klick in den Vortag/nächsten Tag legt den Block dort an (Blöcke gehen nicht über Mitternacht)
+    const off = m < 0 ? -DAY_MIN : m >= DAY_MIN ? DAY_MIN : 0, date = addDays(viewDate, off / DAY_MIN);
+    const g = gapAt(date, m - off);
     if (!g) return;
     snapshot();
-    const anchor = clamp(snapTo(m), g.lo, g.hi);
-    const e = { id: uid(), date: viewDate, start: anchor, end: anchor, cat: state.cat, project: currentProject(), title: '' };
+    const anchor = clamp(snapTo(m - off), g.lo, g.hi);
+    const e = { id: uid(), date, start: anchor, end: anchor, cat: state.cat, project: currentProject(), title: '' };
     state.entries.push(e);
     selectedId = e.id;
-    drag = { mode: 'create', id: e.id, x0: ev.clientX, anchor, gap: g, moved: false };
+    drag = { mode: 'create', id: e.id, off, x0: ev.clientX, anchor, gap: g, moved: false };
   }
   track.setPointerCapture(ev.pointerId);
   render();
@@ -754,7 +786,7 @@ track.addEventListener('pointermove', ev => {
   if (Math.abs(ev.clientX - drag.x0) > 3) drag.moved = true;
   if (!drag.moved) return;
   const e = state.entries.find(x => x.id === drag.id);
-  const m = minutesAt(ev.clientX);
+  const m = minutesAt(ev.clientX) - drag.off;
   if (drag.mode === 'create') {
     const t = clamp(snapTo(m), drag.gap.lo, drag.gap.hi);
     e.start = Math.min(drag.anchor, t);
@@ -764,7 +796,7 @@ track.addEventListener('pointermove', ev => {
     const want = snapTo(drag.start0 + (m - drag.m0));
     // nächstgelegene freie Lücke, in die der Block passt
     let best = null;
-    for (const g of gaps(viewDate, e.id)) {
+    for (const g of gaps(e.date, e.id)) {
       if (g.hi - g.lo < dur) continue;
       const s = clamp(want, g.lo, g.hi - dur);
       if (!best || Math.abs(s - want) < Math.abs(best - want)) best = s;
@@ -773,12 +805,12 @@ track.addEventListener('pointermove', ev => {
   } else if (drag.mode === 'left') {
     const nb = drag.nb && state.entries.find(x => x.id === drag.nb.id);
     // in den Nachbarn hinein darf man ziehen, bis von ihm noch ein Rasterschritt übrig ist
-    const lo = nb ? drag.nb.start0 + state.snap : (gapAt(viewDate, drag.start0, e.id)?.lo ?? 0);
+    const lo = nb ? drag.nb.start0 + state.snap : (gapAt(e.date, drag.start0, e.id)?.lo ?? 0);
     e.start = clamp(snapTo(m), Math.min(lo, e.end - state.snap), e.end - state.snap);
     if (nb) nb.end = drag.nb.touching ? e.start : Math.min(drag.nb.end0, e.start);
   } else if (drag.mode === 'right') {
     const nb = drag.nb && state.entries.find(x => x.id === drag.nb.id);
-    const hi = nb ? drag.nb.end0 - state.snap : (gapAt(viewDate, drag.end0, e.id)?.hi ?? DAY_MIN);
+    const hi = nb ? drag.nb.end0 - state.snap : (gapAt(e.date, drag.end0, e.id)?.hi ?? DAY_MIN);
     e.end = clamp(snapTo(m), e.start + state.snap, Math.max(hi, e.start + state.snap));
     if (nb) nb.start = drag.nb.touching ? e.end : Math.max(drag.nb.start0, e.end);
   }
@@ -1010,6 +1042,7 @@ $('importJson').onchange = async ev => {
 
 // ---------- Bereiche größer/kleiner ziehen ----------
 const LAYOUT_KEY = 'zeitjournal.layout';
+const RANGE_MIN = -12, RANGE_MAX = 36; // Stunden relativ zum gezeigten Tag
 const LAYOUT_DEFAULT = { trackH: 120, monthW: 340, hourPx: 0, dayFrom: 6, dayTo: 24 };
 let layout = { ...LAYOUT_DEFAULT };
 try { Object.assign(layout, JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}); } catch (e) { /* Standard */ }
@@ -1017,8 +1050,9 @@ function applyLayout() {
   layout.trackH = clamp(Math.round(layout.trackH), 70, 520);
   layout.monthW = clamp(Math.round(layout.monthW), 240, 760);
   layout.hourPx = Math.max(0, Number(layout.hourPx) || 0);
-  layout.dayFrom = clamp(Math.round(Number(layout.dayFrom ?? 6)), 0, 23);
-  layout.dayTo = clamp(Math.round(Number(layout.dayTo ?? 24)), layout.dayFrom + 1, 24);
+  // Bereich darf bis zu einen halben Tag in den Vortag bzw. in den nächsten Tag reichen
+  layout.dayFrom = clamp(Math.round(Number(layout.dayFrom ?? 6)), RANGE_MIN, RANGE_MAX - 1);
+  layout.dayTo = clamp(Math.round(Number(layout.dayTo ?? 24)), layout.dayFrom + 1, RANGE_MAX);
   document.documentElement.style.setProperty('--track-h', layout.trackH + 'px');
   document.documentElement.style.setProperty('--month-w', layout.monthW + 'px');
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (e) { /* ignorieren */ }
@@ -1079,14 +1113,28 @@ $('zoomIn').onclick = () => zoomTimeline(1.6);
 $('zoomOut').onclick = () => zoomTimeline(1 / 1.6);
 $('zoomFit').onclick = () => { layout.hourPx = 0; applyLayout(); renderTrack(); };
 // Stundenbereich der Zeitleiste
-for (let h = 0; h <= 24; h++) {
-  if (h < 24) $('dayFrom').add(new Option(`${h}:00`, h));
-  if (h > 0) $('dayTo').add(new Option(`${h}:00`, h));
+const rangeLabel = h => h < 0 ? `Vortag ${h + 24}:00` : h > 24 ? `+1 Tag ${h - 24}:00` : `${h}:00`;
+for (let h = RANGE_MIN; h <= RANGE_MAX; h++) {
+  if (h < RANGE_MAX) $('dayFrom').add(new Option(rangeLabel(h), h));
+  if (h > RANGE_MIN) $('dayTo').add(new Option(rangeLabel(h), h));
 }
-const showRange = () => { $('dayFrom').value = layout.dayFrom; $('dayTo').value = layout.dayTo; };
+const showRange = () => {
+  $('dayFrom').value = layout.dayFrom; $('dayTo').value = layout.dayTo;
+};
 const setRange = (from, to) => {
   layout.dayFrom = from; layout.dayTo = Math.max(to, from + 1);
   applyLayout(); showRange(); renderTrack(); renderWeek();
+};
+// Pfeile links/rechts neben der Leiste: Bereich jeweils um 2 Stunden verlängern und dorthin scrollen
+$('trackEarlier').onclick = () => {
+  const { lo, hi } = viewRange();
+  setRange(Math.min(layout.dayFrom, lo / 60) - 2, Math.max(layout.dayTo, hi / 60));
+  $('trackScroll').scrollLeft = 0;
+};
+$('trackLater').onclick = () => {
+  const { lo, hi } = viewRange();
+  setRange(Math.min(layout.dayFrom, lo / 60), Math.max(layout.dayTo, hi / 60) + 2);
+  $('trackScroll').scrollLeft = $('trackScroll').scrollWidth;
 };
 $('dayFrom').onchange = ev => setRange(Number(ev.target.value), layout.dayTo);
 $('dayTo').onchange = ev => setRange(layout.dayFrom, Number(ev.target.value));

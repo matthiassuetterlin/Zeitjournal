@@ -213,7 +213,13 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
 .day-tools .label { color: var(--muted); margin-right: 2px; }
 .day-tools button { padding: 3px 10px; }
 .day-tools button.active { border-color: var(--line-strong); font-weight: 600; }
-.track-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+.track-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; flex: 1; min-width: 0; }
+.track-wrap { display: flex; align-items: stretch; gap: 4px; }
+.track-more { flex: none; width: 24px; padding: 0; margin-top: 20px; margin-bottom: 2px; border-radius: 8px; font-size: 18px; line-height: 1; color: var(--muted); }
+.track-more:hover { color: var(--text); border-color: var(--line-strong); }
+.track .gridline.midnight { width: 2px; background: var(--line-strong); }
+.scale .daylabel { font-weight: 600; color: var(--text); white-space: nowrap; }
+.track .othday { position: absolute; top: 0; bottom: 0; background: var(--line-soft); opacity: .45; pointer-events: none; }
 .track-inner { min-width: 100%; }
 .block:active { cursor: grabbing; }
 .block.selected { outline: 3px solid var(--text); outline-offset: 1px; z-index: 4; }
