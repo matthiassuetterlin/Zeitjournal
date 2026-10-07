@@ -33,6 +33,7 @@ const state = {
   project: null,    // gewähltes Projekt für neue Blöcke
   snap: 15,
   catColors: {},   // selbst gewählte Farben der Kategorien
+  notes: '',        // freies Notizfeld
 };
 const projById = id => state.projects.find(p => p.id === id) || null;
 // Farbe und Name eines Blocks: Projektblöcke zeigen ihr Projekt
@@ -88,7 +89,7 @@ async function unlockWith(pw) {
   const salt = fromB64(rec.salt);
   const key = await deriveKey(pw, salt);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(rec.iv) }, key, fromB64(rec.data)); // wirft bei falschem Passwort
-  Object.assign(state, { catColors: {}, sync: undefined }, JSON.parse(td.decode(plain)));
+  Object.assign(state, { catColors: {}, notes: '', sync: undefined }, JSON.parse(td.decode(plain)));
   if (!Array.isArray(state.projects)) state.projects = [];
   cryptoKey = key; cryptoSalt = salt;
 }
@@ -196,6 +197,7 @@ function render() {
   renderMonth();
   renderWeek();
   renderSummary();
+  renderNotes();
 }
 
 function renderHeader() {
@@ -507,6 +509,24 @@ function renderSummary() {
   renderSums($('sumWeek'), sums([0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i))));
 }
 
+// ---------- Notizen ----------
+// Tippen speichert kurz danach; kommt ein neuer Stand von einem anderen Gerät, bleibt die Schreibmarke stehen
+function renderNotes() {
+  const t = $('notesInput');
+  const v = state.notes || '';
+  if (t.value === v) return;
+  const { selectionStart: a, selectionEnd: b } = t;
+  t.value = v;
+  if (document.activeElement === t) t.setSelectionRange(Math.min(a, v.length), Math.min(b, v.length));
+}
+let notesTimer = null;
+$('notesInput').addEventListener('input', ev => {
+  state.notes = ev.target.value;
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(save, 400);
+});
+$('notesInput').addEventListener('blur', () => { if (notesTimer) { clearTimeout(notesTimer); notesTimer = null; save(); } });
+
 // ---------- Aktionen ----------
 // project: bei „Projekte“ das gewählte Projekt (null = ohne), sonst undefined
 function chooseCategory(id, project) {
@@ -738,7 +758,7 @@ $('editorInput').addEventListener('blur', () => closeEditor(true));
 // ---------- Tastatur ----------
 document.addEventListener('keydown', ev => {
   if (!cryptoKey || !$('lock').hidden) return;
-  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT' || ev.target.tagName === 'TEXTAREA') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
   if (ev.key === ' ') { ev.preventDefault(); $('startStop').click(); }
@@ -1151,10 +1171,11 @@ $('lockForgot').onclick = async () => {
 };
 // Sperren ohne Neuladen: entschlüsselte Daten aus dem Speicher werfen und das Ziffernfeld zeigen
 async function lockApp() {
+  if (notesTimer) { clearTimeout(notesTimer); notesTimer = null; save(); }
   await flushSave();
   cryptoKey = null;
   cryptoSalt = null;
-  Object.assign(state, { entries: [], projects: [], running: null, catColors: {}, sync: undefined });
+  Object.assign(state, { entries: [], projects: [], running: null, catColors: {}, notes: '', sync: undefined });
   closeColorMenu();
   history.length = 0;
   future.length = 0;

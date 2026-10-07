@@ -65,12 +65,13 @@
     projects: state.projects,
     catColors: state.catColors || {},
     running: state.running || null,
+    notes: state.notes || '',
   });
   // Das Ende des laufenden Blocks wächst jede Sekunde; das allein ist keine Änderung
   const norm = (e, running) => (e && e.id === running ? { ...e, end: null } : e);
   const fingerprint = d => JSON.stringify({
     e: [...d.entries].sort((a, b) => (a.id < b.id ? -1 : 1)).map(e => norm(e, d.running)),
-    p: d.projects, c: d.catColors, r: d.running,
+    p: d.projects, c: d.catColors, r: d.running, n: d.notes || '',
   });
   const byId = list => new Map(list.map(x => [x.id, x]));
   const same = (a, b, running) => JSON.stringify(norm(a, running)) === JSON.stringify(norm(b, running));
@@ -91,12 +92,15 @@
       if (local.catColors[k]) out.catColors[k] = local.catColors[k]; else delete out.catColors[k];
     }
     if (local.running !== (base.running || null)) out.running = local.running;
+    // Notizen: hier geändert gewinnt, sonst der Serverstand
+    if ((local.notes || '') !== (base.notes || '')) out.notes = local.notes || '';
     if (out.running && !out.entries.some(e => e.id === out.running)) out.running = null;
     return out;
   }
   function apply(d) {
     const sel = selectedId;
-    Object.assign(state, { entries: d.entries, projects: d.projects, catColors: d.catColors || {}, running: d.running || null });
+    Object.assign(state, { entries: d.entries, projects: d.projects, catColors: d.catColors || {}, running: d.running || null,
+      notes: typeof d.notes === 'string' ? d.notes : (state.notes || '') });
     if (state.project && !projById(state.project)) state.project = null;
     if (sel && !state.entries.some(e => e.id === sel)) selectedId = null;
     history.length = 0; future.length = 0;   // Rückgängig würde sonst Änderungen anderer Geräte überschreiben

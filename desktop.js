@@ -1,6 +1,6 @@
 'use strict';
 // Desktop-Ansicht für die Windows-Version (Electron): ein kompakter Block aus Modulen mit durchsichtigen Zwischenräumen.
-// Anordnung (Variante B): oben Uhr | Kategorien, dann die Zeitleiste quer, darunter Monat | Summen, darunter Woche.
+// Anordnung (Variante B): oben Uhr | Kategorien, dann die Zeitleiste quer, darunter Monat | Summen, darunter Woche | Notizen.
 // Zwischenräume ziehen verteilt den Platz zwischen Nachbarmodulen, Ränder und Ecken ziehen ändern die ganze App.
 // Ein Modul schließt man mit dem × oben rechts; ausgeblendete Module stehen als „+ Name“ in der Kopfleiste.
 // Im Browser tut diese Datei nichts: nur die Desktop-Hülle stellt window.zeitjournalDesktop bereit.
@@ -20,6 +20,7 @@
     monat: { name: 'Monat', el: () => document.querySelector('.month') },
     summen: { name: 'Summen', el: () => document.querySelector('.summary') },
     woche: { name: 'Woche', el: () => document.querySelector('.week') },
+    notizen: { name: 'Notizen', el: () => document.querySelector('.notes') },
     extras: { name: 'Extras', el: () => document.querySelector('.footer') },
   };
   // Zeilen des Rasters mit Standardhöhe; Zeilen mit zwei Modulen teilen sich die Breite
@@ -27,7 +28,7 @@
     { id: 'r1', mods: ['uhr', 'kategorien'], h: 190 },
     { id: 'r2', mods: ['tag'], h: 225 },
     { id: 'r3', mods: ['monat', 'summen'], h: 400 },
-    { id: 'r4', mods: ['woche'], h: 250 },
+    { id: 'r4', mods: ['woche', 'notizen'], h: 130 },
     { id: 'r5', mods: ['extras'], h: 80 },
   ];
 
@@ -82,7 +83,7 @@
     pos: null,
     hidden: { woche: true, extras: true },
     rowH: Object.fromEntries(ROWS.map(r => [r.id, r.h])),
-    split: { r1: 0.5, r3: 0.5 },
+    split: { r1: 0.5, r3: 0.5, r4: 0.6 },
   });
   let L = fresh();
   try {

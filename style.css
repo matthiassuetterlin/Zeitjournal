@@ -528,7 +528,7 @@ html.panel.narrow .tile { padding-bottom: 10px; }
 .tile-body > .topbar .date-label { min-width: 0; }
 .tile-body > .palette, .tile-body > .footer { padding: 10px 12px; }
 .tile-body > section { padding: 12px; }
-.tile-body > .summary > h2 { display: none; }
+.tile-body > .summary > h2, .tile-body > .notes > h2 { display: none; }
 html.desktop .lock { background: transparent; pointer-events: none; }
 html.desktop .lock-card { pointer-events: auto; }
 html.desktop .dialog-backdrop { background: transparent; }
@@ -622,3 +622,17 @@ html.panel.narrow .board-edge { display: none; }
   .sumrow { grid-template-columns: minmax(0, 1fr) auto; }
   .sumrow .sumbar, .sumrow.sumtotal > span:nth-child(2) { display: none; }
 }
+
+/* ---------- Notizen ---------- */
+.notes { display: flex; flex-direction: column; }
+.notes textarea {
+  width: 100%; min-height: 140px; resize: vertical; box-sizing: border-box;
+  font: inherit; font-size: 14px; line-height: 1.5; color: var(--text);
+  background: var(--track); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+}
+.notes textarea::placeholder { color: var(--muted); }
+.notes textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* In der Kachel füllt das Feld den ganzen Platz */
+.tile-body > .notes { height: 100%; box-sizing: border-box; }
+.tile-body > .notes textarea { flex: 1; min-height: 0; resize: none; }
+html.narrow .tile:not(.sized) .notes textarea { flex: none; min-height: 140px; }
