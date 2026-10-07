@@ -674,3 +674,7 @@ html.board-dragging .tile-bar { cursor: grabbing; }
 .blockmenu[hidden] { display: none; }
 .blockmenu button { border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
 .blockmenu button:hover { background: var(--hover); }
+
+/* Stundenbereich der Zeitleiste */
+.day-tools .range { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.day-tools .range select { padding: 2px 4px; font-size: 13px; }

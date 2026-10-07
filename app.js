@@ -196,8 +196,9 @@ function gapAt(date, m, exceptId) {
 }
 
 // ---------- Sichtbarer Bereich der Zeitleiste ----------
+// Sichtbarer Bereich: eingestellte Stunden (von/bis), erweitert um Blöcke außerhalb und um „jetzt“
 function viewRange() {
-  let lo = 6 * 60, hi = 20 * 60;
+  let lo = (layout.dayFrom ?? 6) * 60, hi = (layout.dayTo ?? 24) * 60;
   for (const e of dayEntries(viewDate)) { lo = Math.min(lo, e.start); hi = Math.max(hi, e.end); }
   if (viewDate === toDateStr(new Date())) { const n = nowMinutes(); lo = Math.min(lo, n); hi = Math.max(hi, n + 30); }
   return { lo: Math.floor(lo / 60) * 60, hi: Math.min(DAY_MIN, Math.ceil(hi / 60) * 60) };
@@ -442,7 +443,7 @@ function renderWeek() {
   $('weekLabel').textContent = `${parseDate(mon).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })} – ${parseDate(sun).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`;
   const rows = $('weekRows');
   rows.innerHTML = '';
-  const lo = 6 * 60, hi = 20 * 60;
+  const lo = layout.dayFrom * 60, hi = layout.dayTo * 60;
   let wlo = lo, whi = hi;
   for (let i = 0; i < 7; i++) for (const e of dayEntries(addDays(mon, i))) { wlo = Math.min(wlo, e.start); whi = Math.max(whi, e.end); }
   wlo = Math.floor(wlo / 60) * 60; whi = Math.ceil(whi / 60) * 60;
@@ -1009,13 +1010,15 @@ $('importJson').onchange = async ev => {
 
 // ---------- Bereiche größer/kleiner ziehen ----------
 const LAYOUT_KEY = 'zeitjournal.layout';
-const LAYOUT_DEFAULT = { trackH: 120, monthW: 340, hourPx: 0 };
+const LAYOUT_DEFAULT = { trackH: 120, monthW: 340, hourPx: 0, dayFrom: 6, dayTo: 24 };
 let layout = { ...LAYOUT_DEFAULT };
 try { Object.assign(layout, JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}); } catch (e) { /* Standard */ }
 function applyLayout() {
   layout.trackH = clamp(Math.round(layout.trackH), 70, 520);
   layout.monthW = clamp(Math.round(layout.monthW), 240, 760);
   layout.hourPx = Math.max(0, Number(layout.hourPx) || 0);
+  layout.dayFrom = clamp(Math.round(Number(layout.dayFrom ?? 6)), 0, 23);
+  layout.dayTo = clamp(Math.round(Number(layout.dayTo ?? 24)), layout.dayFrom + 1, 24);
   document.documentElement.style.setProperty('--track-h', layout.trackH + 'px');
   document.documentElement.style.setProperty('--month-w', layout.monthW + 'px');
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch (e) { /* ignorieren */ }
@@ -1075,6 +1078,19 @@ function zoomTimeline(factor, clientX) {
 $('zoomIn').onclick = () => zoomTimeline(1.6);
 $('zoomOut').onclick = () => zoomTimeline(1 / 1.6);
 $('zoomFit').onclick = () => { layout.hourPx = 0; applyLayout(); renderTrack(); };
+// Stundenbereich der Zeitleiste
+for (let h = 0; h <= 24; h++) {
+  if (h < 24) $('dayFrom').add(new Option(`${h}:00`, h));
+  if (h > 0) $('dayTo').add(new Option(`${h}:00`, h));
+}
+const showRange = () => { $('dayFrom').value = layout.dayFrom; $('dayTo').value = layout.dayTo; };
+const setRange = (from, to) => {
+  layout.dayFrom = from; layout.dayTo = Math.max(to, from + 1);
+  applyLayout(); showRange(); renderTrack(); renderWeek();
+};
+$('dayFrom').onchange = ev => setRange(Number(ev.target.value), layout.dayTo);
+$('dayTo').onchange = ev => setRange(layout.dayFrom, Number(ev.target.value));
+showRange();
 $('trackScroll').addEventListener('wheel', ev => {
   if (!ev.ctrlKey && !ev.metaKey) return;
   ev.preventDefault();
