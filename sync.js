@@ -101,6 +101,7 @@
     if (sel && !state.entries.some(e => e.id === sel)) selectedId = null;
     history.length = 0; future.length = 0;   // Rückgängig würde sonst Änderungen anderer Geräte überschreiben
     render();
+    window.zeitjournalDesktop?.repaint?.();
   }
 
   // ---------- Ablauf ----------

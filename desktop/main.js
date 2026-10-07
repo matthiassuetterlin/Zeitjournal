@@ -6,6 +6,18 @@ const path = require('path');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); return; }
 
+// Windows erklärt das durchsichtige Vollbild-Fenster oft für „verdeckt“, sobald ein anderes Programm aktiv ist,
+// und zeichnet es dann erst beim nächsten Anklicken neu. Diese Sparmaßnahmen hier abschalten.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+
+// Build-Nummer aus der Release-Pipeline (fehlt beim lokalen Start)
+let build = '';
+try { build = String(require('./build-info.json').build || ''); } catch (e) { /* lokal */ }
+const versionLabel = build ? `Version ${build}` : 'Entwicklerversion';
+
 const settingsFile = () => path.join(app.getPath('userData'), 'einstellungen.json');
 let settings = { onTop: false, firstRunDone: false };
 try { Object.assign(settings, JSON.parse(fs.readFileSync(settingsFile(), 'utf8'))); } catch (e) { /* Standard */ }
@@ -62,6 +74,8 @@ function buildMenu() {
     { type: 'separator' },
     { label: 'Sperren', click: () => send({ type: 'lock' }) },
     { label: 'Beenden', click: () => app.quit() },
+    { type: 'separator' },
+    { label: versionLabel, enabled: false },
   ]);
 }
 const refreshMenu = () => { if (tray) tray.setContextMenu(buildMenu()); };
@@ -76,11 +90,13 @@ app.whenReady().then(() => {
   }
   createWindow();
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.png')).resize({ width: 16, height: 16 }));
-  tray.setToolTip('Zeitjournal');
+  tray.setToolTip(`Zeitjournal (${versionLabel})`);
   tray.on('click', () => { win.show(); win.focus(); });
   refreshMenu();
 
   ipcMain.on('interactive', (_e, on) => win.setIgnoreMouseEvents(!on, { forward: true }));
+  // Nach einem Abgleich neu zeichnen, auch wenn das Fenster gerade nicht aktiv ist
+  ipcMain.on('repaint', () => { if (win && !win.isDestroyed()) win.webContents.invalidate(); });
   ipcMain.on('tiles', (_e, info) => { tiles = info.tiles || []; refreshMenu(); });
   screen.on('display-metrics-changed', fitToScreen);
   screen.on('display-added', fitToScreen);

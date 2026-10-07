@@ -3,9 +3,9 @@ name: Windows-Desktop-Version
 on:
   push:
     branches: [main]
-    paths: ['desktop/**', 'index.html', 'app.js', 'style.css', 'desktop.js', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'index.html', 'app.js', 'style.css', 'desktop.js', 'sync.js', 'icon.svg', '.github/workflows/desktop.yml']
   pull_request:
-    paths: ['desktop/**', 'index.html', 'app.js', 'style.css', 'desktop.js', '.github/workflows/desktop.yml']
+    paths: ['desktop/**', 'index.html', 'app.js', 'style.css', 'desktop.js', 'sync.js', 'icon.svg', '.github/workflows/desktop.yml']
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,10 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
+      # Build-Nummer mitgeben, damit das Tray-Menü zeigt, welche Version installiert ist
+      - run: node -e "require('fs').writeFileSync('build-info.json', JSON.stringify({ build: process.env.RUN }))"
+        env:
+          RUN: ${{ github.run_number }}
       - run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
