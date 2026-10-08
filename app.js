@@ -817,8 +817,15 @@ track.addEventListener('pointermove', ev => {
   if (!drag) return;
   if (drag.mode === 'pdiv') {
     const e = state.entries.find(x => x.id === drag.id);
-    const both = drag.wa + drag.wb, min = Math.min(Math.max(drag.sum * 0.12, 20 / drag.h * drag.sum), both / 2);
-    const wa = clamp(drag.wa + (ev.clientY - drag.y0) / drag.h * drag.sum, min, both - min);
+    // Trennlinie rastet im selben Raster ein wie die Blöcke (z. B. 15 min), gemessen ab Blockbeginn
+    const both = drag.wa + drag.wb, mPerW = (e.end - e.start) / drag.sum;
+    const pre = e.parts.slice(0, drag.i - 1).reduce((a, p) => a + p.w, 0) * mPerW;
+    const bothMin = both * mPerW, rawMin = (drag.wa + (ev.clientY - drag.y0) / drag.h * drag.sum) * mPerW;
+    const step = state.snap * Math.max(1, Math.ceil(10 / drag.h * (e.end - e.start) / state.snap)); // Teil bleibt sichtbar
+    const aMin = bothMin >= 2 * step
+      ? clamp(Math.round((pre + rawMin) / state.snap) * state.snap - pre, step, bothMin - step)
+      : bothMin / 2;
+    const wa = aMin / mPerW;
     e.parts[drag.i - 1].w = wa; e.parts[drag.i].w = both - wa;
     drag.moved = true;
     renderTrack();
@@ -877,6 +884,7 @@ function endDrag() {
       syncHead(e);
       selectedPart = drag.target;
     } else if (drag.mode === 'preorder' || !drag.moved) { history.pop(); renderHistoryButtons(); }
+    if (e && drag.span) settleEntry(e); // langes Drücken begann als Verschieben: zurück auf den echten Tag
     drag = null;
     save();
     render();
@@ -921,9 +929,12 @@ function splitBlock(e) {
     cat = (CATEGORIES.find(c => !ps.some(p => p.cat === c.id)) || CATEGORIES[0]).id;
     project = null;
   }
-  const last = ps[ps.length - 1];
-  last.w /= 2;
-  ps.push({ cat, project, w: last.w });
+  // unterster Teil gibt die Hälfte ab, auf das Raster abgerundet (z. B. 15 min)
+  const last = ps[ps.length - 1], mPerW = (e.end - e.start) / ps.reduce((a, p) => a + p.w, 0);
+  const half = Math.floor(last.w * mPerW / 2 / state.snap) * state.snap;
+  const w = half >= state.snap ? half / mPerW : last.w / 2;
+  last.w -= w;
+  ps.push({ cat, project, w });
   e.parts = ps;
   syncHead(e);
   selectedId = e.id; selectedPart = ps.length - 1;
