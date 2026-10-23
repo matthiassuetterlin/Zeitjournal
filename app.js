@@ -408,7 +408,7 @@ function renderTrack() {
   const fitPx = scroller.clientWidth / (span / 60);
   const hourPx = Math.max(fitPx, layout.hourPx || 0);
   $('trackInner').style.width = hourPx > fitPx + 0.5 ? `${(span / 60) * hourPx}px` : '100%';
-  $('zoomFit').classList.toggle('active', !(hourPx > fitPx + 0.5));
+  $('zoomFit').classList.toggle('active', !(hourPx > fitPx + 0.5) && lo === 0 && hi === DAY_MIN);
   track.innerHTML = '';
   const scale = $('scale');
   scale.innerHTML = '';
@@ -619,9 +619,14 @@ function renderSums(el, rows) {
   el.innerHTML = rows.map(r => row(r.v ? '' : 'zero', r)).join('') +
     `<div class="sumrow sumtotal"><span>Gesamt</span><span></span><span class="v">${fmtDur(total)}</span></div>`;
 }
+// Summen gelten für den oben gewählten Tag und seine Woche
 function renderSummary() {
+  const today = toDateStr(new Date()), mon = mondayOf(viewDate);
+  $('sumDayLabel').textContent = viewDate === today ? 'Heute'
+    : parseDate(viewDate).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'numeric' });
+  $('sumWeekLabel').textContent = mon === mondayOf(today) ? 'Diese Woche'
+    : `Woche ${parseDate(mon).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}–${parseDate(addDays(mon, 6)).toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' })}`;
   renderSums($('sumDay'), sums([viewDate]));
-  const mon = mondayOf(viewDate);
   renderSums($('sumWeek'), sums([0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i))));
 }
 
@@ -1174,7 +1179,8 @@ function zoomTimeline(factor, clientX) {
 }
 $('zoomIn').onclick = () => zoomTimeline(1.6);
 $('zoomOut').onclick = () => zoomTimeline(1 / 1.6);
-$('zoomFit').onclick = () => { layout.hourPx = 0; applyLayout(); renderTrack(); };
+// Ganzer Tag: genau 0 bis 24 Uhr des gewählten Tages, ohne Zoom
+$('zoomFit').onclick = () => { layout.hourPx = 0; setRange(0, 24); };
 // Stundenbereich der Zeitleiste
 const rangeLabel = h => {
   const d = Math.floor(h / 24), hh = h - d * 24;

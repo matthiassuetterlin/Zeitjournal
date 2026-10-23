@@ -40,7 +40,7 @@
           <select id="dayFrom"></select> bis <select id="dayTo"></select></label>
         <span class="label">Zoom</span>
         <button id="zoomOut" title="Herauszoomen (Strg + Mausrad)">−</button>
-        <button id="zoomFit" title="Ganzen Tag auf einmal zeigen">Ganzer Tag</button>
+        <button id="zoomFit" title="Genau den gewählten Tag zeigen, 0 bis 24 Uhr">Ganzer Tag</button>
         <button id="zoomIn" title="Hineinzoomen, damit kurze Blöcke breiter werden (Strg + Mausrad)">+</button>
         <button class="info" id="infoBtn" aria-describedby="infoTip" aria-label="Wie es funktioniert">i</button>
         <div class="infotip" id="infoTip" role="tooltip">
@@ -90,8 +90,8 @@
     <section class="summary">
       <h2>Summen</h2>
       <div class="summary-grid">
-        <div><h3>Heute</h3><div id="sumDay"></div></div>
-        <div><h3>Diese Woche</h3><div id="sumWeek"></div></div>
+        <div><h3 id="sumDayLabel">Heute</h3><div id="sumDay"></div></div>
+        <div><h3 id="sumWeekLabel">Diese Woche</h3><div id="sumWeek"></div></div>
       </div>
     </section>
 
