@@ -169,7 +169,7 @@ function nowMinutes() {
   return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 }
 function fmtTime(m) {
-  m = Math.round(m);
+  m = Math.round(m) % DAY_MIN; // nach Mitternacht (Block gehört zum Vortag) wieder ab 0:00
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
 function fmtDur(m) {
@@ -203,6 +203,8 @@ function gapAt(date, m, exceptId) {
 function viewRange() {
   let lo = (layout.dayFrom ?? 6) * 60, hi = (layout.dayTo ?? 24) * 60;
   for (const e of dayEntries(viewDate)) { lo = Math.min(lo, e.start); hi = Math.max(hi, e.end); }
+  // Block vom Vortag, der über Mitternacht in diesen Tag reicht, ganz zeigen
+  for (const e of dayEntries(addDays(viewDate, -1))) if (e.end > DAY_MIN) lo = Math.min(lo, e.start - DAY_MIN);
   if (viewDate === toDateStr(new Date())) { const n = nowMinutes(); lo = Math.min(lo, n); hi = Math.max(hi, Math.min(DAY_MIN, n + 30)); }
   return { lo: Math.floor(lo / 60) * 60, hi: Math.ceil(hi / 60) * 60 };
 }
@@ -231,23 +233,11 @@ function viewGaps(lo, hi, exceptId) {
 }
 const viewGapAt = (lo, hi, m, exceptId) => viewGaps(lo, hi, exceptId).find(g => m >= g.lo && m <= g.hi) || null;
 // Während des Ziehens liegt ein Block in Minuten des gezeigten Tages (auch <0 oder >24 h).
-// Danach wieder auf echte Tage verteilen; über Mitternacht wird er an der Tagesgrenze geteilt.
+// Danach gehört er zu dem Tag, an dem er beginnt; reicht er über Mitternacht, endet er nach 24:00 (z. B. 25:00).
 function settleEntry(e) {
-  const k0 = Math.floor(e.start / DAY_MIN), k1 = Math.ceil(e.end / DAY_MIN) - 1;
-  const base = e.date, s0 = e.start, e0 = e.end;
-  const segs = [];
-  for (let k = k0; k <= Math.max(k0, k1); k++) {
-    const a = Math.max(s0, k * DAY_MIN) - k * DAY_MIN, b = Math.min(e0, (k + 1) * DAY_MIN) - k * DAY_MIN;
-    if (b - a >= 1 || k0 === k1) segs.push({ date: addDays(base, k), start: a, end: b });
-  }
-  // der laufende Block behält seine Id auf dem letzten Stück, sonst das erste
-  const keep = e.id === state.running ? segs.length - 1 : 0;
-  segs.forEach((g, i) => {
-    if (i === keep) { Object.assign(e, g); return; }
-    const copy = JSON.parse(JSON.stringify(e));
-    Object.assign(copy, g, { id: uid() });
-    state.entries.push(copy);
-  });
+  const k = Math.floor(e.start / DAY_MIN);
+  e.date = addDays(e.date, k);
+  e.start -= k * DAY_MIN; e.end -= k * DAY_MIN;
 }
 
 // ---------- DOM ----------
@@ -684,6 +674,7 @@ function startTimer() {
   let e = prev;
   // Läuft gerade ein anderer Block über „jetzt“ hinaus, endet er jetzt.
   for (const o of dayEntries(today)) if (o !== e && o.start < n && o.end > n) o.end = Math.max(o.start, Math.floor(n));
+  for (const o of dayEntries(addDays(today, -1))) if (o.end > n + DAY_MIN) o.end = Math.max(o.start, Math.floor(n) + DAY_MIN);
   if (!e) {
     e = { id: uid(), date: today, start: n, end: n, cat: state.cat, project: currentProject(), title: '' };
     state.entries.push(e);
@@ -710,16 +701,8 @@ function tick() {
   const e = state.entries.find(x => x.id === state.running);
   if (e) {
     const today = toDateStr(new Date());
-    if (e.date !== today) {
-      // Über Mitternacht: alten Block um 24:00 abschließen und heute weiterlaufen lassen.
-      e.end = DAY_MIN;
-      const n = { id: uid(), date: today, start: 0, end: nowMinutes(), cat: e.cat, project: e.project, title: e.title };
-      if (e.parts) n.parts = e.parts.map(p => ({ ...p }));
-      state.entries.push(n);
-      state.running = n.id;
-    } else {
-      e.end = Math.max(e.start, nowMinutes());
-    }
+    // Über Mitternacht läuft der Block einfach weiter und bleibt beim Tag, an dem er begann
+    e.end = Math.max(e.start, nowMinutes() + dayDiff(e.date, today) * DAY_MIN);
     save();
   }
   if (!drag) { renderHeader(); renderTrack(); if (e) { renderMonth(); renderWeek(); renderSummary(); } }
